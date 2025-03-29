@@ -26,8 +26,71 @@ function tinhTienDienKinhDoanh(x: number, giaKinhDoanh: number): number {
   return x * giaKinhDoanh
 }
 
-function tinhSanLuongDien(capacity: number, sunHours: number, efficiency: number): number {
-  return capacity * sunHours * 30 * (efficiency / 100)
+// Add IRR calculation function
+function calculateIRR(cashFlows: number[]): number {
+  // IRR calculation using numerical methods (Newton-Raphson)
+  const maxIterations = 1000;
+  const tolerance = 0.000001;
+  
+  // Helper function to calculate NPV
+  const calculateNPV = (rate: number): number => {
+    let npv = cashFlows[0]; // Initial investment (negative)
+    for (let i = 1; i < cashFlows.length; i++) {
+      npv += cashFlows[i] / Math.pow(1 + rate, i);
+    }
+    return npv;
+  };
+  
+  // Helper function to calculate NPV derivative
+  const calculateNPVDerivative = (rate: number): number => {
+    let derivative = 0;
+    for (let i = 1; i < cashFlows.length; i++) {
+      derivative -= i * cashFlows[i] / Math.pow(1 + rate, i + 1);
+    }
+    return derivative;
+  };
+  
+  // Initial guess
+  let rate = 0.1; // 10%
+  
+  // Newton-Raphson method
+  for (let i = 0; i < maxIterations; i++) {
+    const npv = calculateNPV(rate);
+    if (Math.abs(npv) < tolerance) {
+      break;
+    }
+    
+    const derivative = calculateNPVDerivative(rate);
+    if (derivative === 0) {
+      return NaN; // No solution
+    }
+    
+    const newRate = rate - npv / derivative;
+    if (Math.abs(newRate - rate) < tolerance) {
+      rate = newRate;
+      break;
+    }
+    
+    rate = newRate;
+  }
+  
+  return rate * 100; // Convert to percentage
+}
+
+function tinhSanLuongDien(capacity: number, sunHours: number, efficiency: number, years: number = 0): number {
+  // Calculate base production using standard yield of 1380 kWh/kWp/year
+  const annualProduction = 1380 * capacity * (efficiency/100)
+  // Convert to monthly production
+  const baseProduction = annualProduction / 12
+  
+  // Apply panel degradation if years parameter is provided
+  if (years > 0) {
+    // Panel degradation is 0.7% per year
+    const degradationFactor = Math.pow(1 - 0.007, years)
+    return baseProduction * degradationFactor
+  }
+  
+  return baseProduction
 }
 
 function tinhSanLuongTieuThu(sanLuongSanXuat: number, tyLeTieuThu: number): number {
@@ -87,20 +150,22 @@ export default function EfficiencyAnalysisPage() {
   const [electricityType, setElectricityType] = useState("sinh-hoat")
   const [monthlyConsumption, setMonthlyConsumption] = useState(350) // kWh/month
   const [electricityCost, setElectricityCost] = useState("1948508")
-  const [dayTimeUsagePercent, setDayTimeUsagePercent] = useState(70)
+  const [dayTimeUsagePercent, setDayTimeUsagePercent] = useState(90)
 
   // System parameters
   const [systemCapacity, setSystemCapacity] = useState(4.78) // Fixed value
   const [safetyRatio, setSafetyRatio] = useState(100)
   const [batteryOption, setBatteryOption] = useState("Không lắp")
-  const [systemEfficiency, setSystemEfficiency] = useState(85) // 85% efficiency
+  const [systemEfficiency, setSystemEfficiency] = useState(100) // 85% efficiency
   const [sunHoursPerDay, setSunHoursPerDay] = useState(5) // Average sun hours per day
   const [costPerKWp, setCostPerKWp] = useState(10_000_000) // Default 10,000,000 VND/kWp
+  const [currentYear, setCurrentYear] = useState(0) // Year 0 is the first year of installation
   
   // Constants for calculations
   const batteryDepreciationRate = 0.7 // 0.7% battery depreciation per year
   const maintenanceCostPerKWp = 300_000 // 300,000 VND/kWp for operation and maintenance
   const VAT = 0.08 // 8% VAT on electricity and investment
+  const solarPanelLifespan = 20 // Solar panel lifespan in years
 
   // Calculate investment efficiency
   const calculations = useMemo(() => {
@@ -160,14 +225,87 @@ export default function EfficiencyAnalysisPage() {
     // Calculate annual savings
     const annualSavings = monthlySavings * 12
 
-    // Calculate 25-year savings (solar panel lifespan)
-    const totalSavings = annualSavings * 25
+    // Calculate solar panel lifespan savings with degradation and price increase
+    let totalSavings = 0
+    let yearlySavingsArray = [] // Array to store yearly savings for payback calculation
+    let cashFlows = [-initialInvestment] // Initial investment as negative cash flow
+    
+    for (let year = 0; year < solarPanelLifespan; year++) {
+      // Calculate production for this specific year with degradation
+      const yearlyProduction = tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, year)
+      const yearlyConsumption = tinhSanLuongTieuThu(yearlyProduction, dayTimeUsagePercent)
+      const yearlySavings = tinhSanLuongTietKiem(calculatedMonthlyConsumption, yearlyConsumption)
+      
+      // Calculate remaining consumption for this year
+      const yearlyRemainingConsumption = calculatedMonthlyConsumption - yearlySavings
+      
+      // Calculate electricity cost for this year with price increase
+      let yearlyElectricityCost = 0
+      if (electricityType === "sinh-hoat") {
+        yearlyElectricityCost = tinhTienDienSinhHoat(yearlyRemainingConsumption, bacDienSinhHoat)
+      } else {
+        yearlyElectricityCost = tinhTienDienKinhDoanh(yearlyRemainingConsumption, giaKinhDoanh)
+      }
+      
+      // Apply annual electrical price increase
+      const priceIncreaseFactor = Math.pow(1 + 0.04, year)
+      
+      // Calculate original electricity cost with price increase
+      const originalElectricityCostWithIncrease = monthlyElectricityCost * priceIncreaseFactor
+      const originalElectricityCostWithIncreaseAndVAT = originalElectricityCostWithIncrease * (1 + VAT)
+      
+      // Apply the same price increase to the new electricity cost
+      yearlyElectricityCost *= priceIncreaseFactor
+      const yearlyElectricityCostWithVAT = yearlyElectricityCost * (1 + VAT)
+      
+      // Calculate savings for this year with price increase
+      const yearlyMonthlySavings = originalElectricityCostWithIncreaseAndVAT - yearlyElectricityCostWithVAT
+      
+      // Subtract annual maintenance cost from the yearly savings
+      const yearlyTotalSavings = (yearlyMonthlySavings * 12) - annualMaintenanceCost
+      totalSavings += yearlyTotalSavings
+      
+      // Store yearly savings for payback calculation
+      yearlySavingsArray.push(yearlyTotalSavings)
+      
+      // Add to cash flows for IRR calculation
+      cashFlows.push(yearlyTotalSavings)
+    }
 
-    // Calculate ROI
+    // Calculate IRR (Internal Rate of Return)
+    const irr = calculateIRR(cashFlows)
+
+    // Calculate ROI more accurately
     const roi = (totalSavings / totalInvestment) * 100
 
-    // Calculate payback period in years
-    const paybackPeriod = totalInvestment / annualSavings
+    // Calculate payback period in years more accurately
+    let cumulativeSavings = 0
+    let paybackPeriod = solarPanelLifespan // Default to max lifespan
+    let paybackYear = -1;
+    let cumulativeSavingsArray = [];
+    
+    for (let year = 0; year < yearlySavingsArray.length; year++) {
+      cumulativeSavings += yearlySavingsArray[year];
+      cumulativeSavingsArray.push(cumulativeSavings);
+      
+      if (cumulativeSavings >= totalInvestment && paybackYear === -1) {
+        paybackYear = year;
+      }
+    }
+    
+    if (paybackYear > 0) {
+      // Apply the Excel formula logic:
+      // =MAX($H86:$AA86)+-INDEX($H85:$AA85;;MAX($H86:$AA86)-1)/INDEX($H84:$AA84;;MAX($H86:$AA86))
+      // Where:
+      // - $H86:$AA86 is the year index where cumulative savings exceeds investment
+      // - $H85:$AA85 is the cumulative savings array
+      // - $H84:$AA84 is the yearly savings array
+      
+      const previousYearCumulativeSavings = cumulativeSavingsArray[paybackYear - 1];
+      const currentYearSavings = yearlySavingsArray[paybackYear];
+      
+      paybackPeriod = paybackYear + (totalInvestment - previousYearCumulativeSavings) / currentYearSavings;
+    }
 
     return {
       initialInvestmentBeforeVAT,
@@ -187,6 +325,7 @@ export default function EfficiencyAnalysisPage() {
       totalSavings,
       roi,
       paybackPeriod,
+      irr, // Add IRR to the return object
     }
   }, [
     electricityType,
@@ -197,6 +336,7 @@ export default function EfficiencyAnalysisPage() {
     systemEfficiency,
     sunHoursPerDay,
     costPerKWp,
+    currentYear,
     // No need to add constants to dependencies as they don't change
   ])
 
@@ -324,6 +464,36 @@ export default function EfficiencyAnalysisPage() {
                 <div className="flex items-center mt-1">
                   <Input value={Math.round(calculations.monthlySolarConsumption)} disabled className="bg-gray-100" />
                   <span className="ml-2">kWh</span>
+                </div>
+              </div>
+              
+              {/* Thêm component hiển thị sản lượng điện theo thời gian */}
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <Label className="text-sm font-medium text-blue-800">Sản lượng điện theo thời gian</Label>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div>
+                    <Label className="text-xs text-blue-700">Tháng đầu tiên</Label>
+                    <div className="flex items-center mt-1">
+                      <Input 
+                        value={Math.round(tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, 0))} 
+                        disabled 
+                        className="bg-white border-blue-200" 
+                      />
+                      <span className="ml-2 text-sm">kWh</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-blue-700">Tháng thứ 2</Label>
+                    <div className="flex items-center mt-1">
+                      <Input 
+                        value={Math.round(tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, 1/12))} 
+                        disabled 
+                        className="bg-white border-blue-200" 
+                      />
+                      <span className="ml-2 text-sm">kWh</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Giảm {((1 - Math.pow(1 - 0.007, 1/12)) * 100).toFixed(3)}%</p>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -501,7 +671,7 @@ export default function EfficiencyAnalysisPage() {
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium text-blue-800">Tổng số tiền tiết kiệm được trong 25 năm</Label>
+                  <Label className="text-sm font-medium text-blue-800">Tổng số tiền tiết kiệm được trong {solarPanelLifespan} năm</Label>
                   <div className="flex items-center mt-1">
                     <Input
                       value={formatNumber(calculations.totalSavings)}
@@ -535,6 +705,23 @@ export default function EfficiencyAnalysisPage() {
                     />
                     <span className="ml-2 font-medium text-amber-700">năm</span>
                   </div>
+                </div>
+                
+                <div className="col-span-2">
+                  <Label className="text-sm font-medium text-amber-800">Tỷ suất hoàn vốn nội bộ (IRR)</Label>
+                  <div className="flex items-center mt-1">
+                    <Input
+                      value={`${isNaN(calculations.irr) ? "N/A" : calculations.irr.toFixed(2) + "%"}`}
+                      disabled
+                      className="bg-white font-bold text-amber-700 border-amber-200"
+                    />
+                    <span className="ml-2 font-medium text-amber-700">
+                      <span className="text-xs text-amber-600 cursor-help" title="IRR là tỷ lệ chiết khấu làm cho NPV của tất cả các dòng tiền bằng 0">ⓘ</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-600 mt-1">
+                    IRR là tỷ suất sinh lời kỳ vọng của dự án, càng cao càng tốt
+                  </p>
                 </div>
               </div>
             </CardContent>
