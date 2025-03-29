@@ -28,53 +28,25 @@ function tinhTienDienKinhDoanh(x: number, giaKinhDoanh: number): number {
 
 // Add IRR calculation function
 function calculateIRR(cashFlows: number[]): number {
-  // IRR calculation using numerical methods (Newton-Raphson)
-  const maxIterations = 1000;
-  const tolerance = 0.000001;
+  let min = 0.0;
+  let max = 1.0;
+  let guest;
+  let NPV;
   
-  // Helper function to calculate NPV
-  const calculateNPV = (rate: number): number => {
-    let npv = cashFlows[0]; // Initial investment (negative)
-    for (let i = 1; i < cashFlows.length; i++) {
-      npv += cashFlows[i] / Math.pow(1 + rate, i);
+  do {
+    guest = (min + max) / 2;
+    NPV = 0;
+    for (var j = 0; j < cashFlows.length; j++) {
+      NPV += cashFlows[j] / Math.pow((1 + guest), j);
     }
-    return npv;
-  };
+    if (NPV > 0) {
+      min = guest;
+    } else {
+      max = guest;
+    }
+  } while (Math.abs(NPV) > 0.000001);
   
-  // Helper function to calculate NPV derivative
-  const calculateNPVDerivative = (rate: number): number => {
-    let derivative = 0;
-    for (let i = 1; i < cashFlows.length; i++) {
-      derivative -= i * cashFlows[i] / Math.pow(1 + rate, i + 1);
-    }
-    return derivative;
-  };
-  
-  // Initial guess
-  let rate = 0.1; // 10%
-  
-  // Newton-Raphson method
-  for (let i = 0; i < maxIterations; i++) {
-    const npv = calculateNPV(rate);
-    if (Math.abs(npv) < tolerance) {
-      break;
-    }
-    
-    const derivative = calculateNPVDerivative(rate);
-    if (derivative === 0) {
-      return NaN; // No solution
-    }
-    
-    const newRate = rate - npv / derivative;
-    if (Math.abs(newRate - rate) < tolerance) {
-      rate = newRate;
-      break;
-    }
-    
-    rate = newRate;
-  }
-  
-  return rate * 100; // Convert to percentage
+  return guest * 100;
 }
 
 function tinhSanLuongDien(capacity: number, sunHours: number, efficiency: number, years: number = 0): number {
@@ -222,8 +194,9 @@ export default function EfficiencyAnalysisPage() {
     // Calculate monthly savings
     const monthlySavings = monthlyElectricityCostWithVAT - newMonthlyElectricityCostWithVAT
 
-    // Calculate annual savings
-    const annualSavings = monthlySavings * 12
+    // Calculate annual savings (subtract maintenance costs)
+    // const annualSavings = (monthlySavings * 12) - annualMaintenanceCost
+    const annualSavings = (monthlySavings * 12)
 
     // Calculate solar panel lifespan savings with degradation and price increase
     let totalSavings = 0
