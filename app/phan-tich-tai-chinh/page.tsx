@@ -92,7 +92,7 @@ export default function FinancialAnalysisPage() {
   // Installment options
   const [installmentRate, setInstallmentRate] = useState(90) // % of total investment to be financed
   const [installmentTerm, setInstallmentTerm] = useState(3) // years
-  const [interestRate, setInterestRate] = useState(6.62) // 6.62% annual interest rate
+  const [interestRate, setInterestRate] = useState(7.68) // 7,68% annual interest rate
 
   // Constants for calculations
   const batteryDepreciationRate = 0.7 // 0.7% battery depreciation per year
@@ -101,14 +101,15 @@ export default function FinancialAnalysisPage() {
 
     // Calculate monthly payment with interest using PMT function
     const monthlyInterestRate = interestRate / 100 / 12
+    console.log('Debug - monthlyInterestRate:', monthlyInterestRate)
     const totalPayments = installmentTerm * 12
-const [totalInvestment, setTotalInvestment] = useState(() => {
-    // Calculate initial investment cost before VAT
-    const initialInvestmentBeforeVAT = systemCapacity * costPerKWp * (safetyRatio / 100)
+    const [totalInvestment, setTotalInvestment] = useState(() => {
+      // Calculate initial investment cost before VAT
+      const initialInvestmentBeforeVAT = systemCapacity * costPerKWp * (safetyRatio / 100)
 
-    // Calculate total investment including VAT
-    return initialInvestmentBeforeVAT * (1 + VAT)
-  }) // VND
+      // Calculate total investment including VAT
+      return initialInvestmentBeforeVAT * (1 + VAT)
+    }) // VND
 
     // Calculate the upfront payment (what the customer actually pays initially)
     const upfrontPayment = totalInvestment * (1 - installmentRate / 100)
@@ -123,13 +124,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
 
     // Annual maintenance cost
     const annualMaintenanceCost = systemCapacity * maintenanceCostPerKWp
-
-    // Total investment is initial investment only (maintenance costs are annual)
-  // Function to calculate average yearly savings after loan term
-  const calculateAverageSavingsAfterLoan = (totalSavingsAfterLoan, remainingYears) => {
-    if (remainingYears <= 0) return 0;
-    return totalSavingsAfterLoan / remainingYears;
-  }
+  const monthlyPayment: bigint[] = []
 
   // Calculate investment efficiency
   const calculations = useMemo(() => {
@@ -193,8 +188,9 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
     const annualCostSavings = monthlyCostSavings * 12
 
     // Calculate solar panel lifespan savings with degradation and price increase
-    let totalSavings = 0
+    let totalSavings = BigInt(0) 
     let yearlySavingsArray = [] // Array to store yearly savings for payback calculation
+    let totalSavingsAfterLoanPaid = 0 // Track savings after loan is paid off
 
     // For IRR calculation, we need the initial investment as the first element (year 0)
     // and then the net cash flows for each subsequent year
@@ -204,216 +200,114 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
     console.log('Debug - Total Investment:', totalInvestment)
     console.log('Debug - Monthly Consumption:', calculatedMonthlyConsumption)
     console.log('Debug - System Capacity:', systemCapacity)
-
-    for (let year = 0; year < solarPanelLifespan; year++) {
-      // Calculate production for this specific year with degradation
-      const yearlyProduction = tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, year)
-      console.log(`Debug - Year ${year}: Solar Production = ${yearlyProduction.toFixed(0)} kWh`)
-
-      const yearlyConsumption = tinhSanLuongTieuThu(yearlyProduction, dayTimeUsagePercent)
-
-      const yearlySavings = tinhSanLuongTietKiem(calculatedMonthlyConsumption * 12, yearlyConsumption) - annualMaintenanceCost
-
-      // Calculate remaining consumption for this year
-      const yearlyRemainingConsumption = (calculatedMonthlyConsumption * 12) - yearlySavings
-      // console.log(`Debug - Year ${year}: Remaining Consumption = ${yearlyRemainingConsumption.toFixed(0)} kWh`)
-
-      // Calculate electricity cost for this year with price increase
-      let yearlyElectricityCost = monthlyElectricityCostWithVAT * 12
-
-      // console.log(`Debug - Year ${year}: Electricity Cost = ${yearlyElectricityCost.toFixed(0)} VND`)
-
-      // Apply annual electrical price increase
-      const priceIncreaseFactor = Math.pow(1 + 0.04, year)
-
-      // Apply the same price increase to the new electricity cost
-      yearlyElectricityCost *= priceIncreaseFactor
-
-      // Calculate savings for this year with price increase
-      const yearlyMonthlySavings = (yearlyElectricityCost - yearlyRemainingConsumption) / 12
-
-
-      // Subtract annual maintenance cost and loan payment from the yearly savings
-      const yearlyTotalSavings = ((yearlyMonthlySavings) * 12) - annualMaintenanceCost
-      totalSavings += yearlyTotalSavings
-
-      // Store yearly savings for payback calculation
-      yearlySavingsArray.push(yearlyTotalSavings)
-
-      // For IRR calculation, we add the yearly cash flow (which is just the savings for that year)
-      // This is correct because the initial investment is already accounted for in the first element
-      cashFlows.push(year == 0 ? -totalInvestment + yearlyTotalSavings
-        : yearlyTotalSavings
-      )
+    function tinhTongNo(goc: number, laiSuatNam: number, thang: number): number {
+      const laiSuatThang: number = laiSuatNam / 12;
+      const tienLai: number = goc * laiSuatThang * thang;
+      const tongPhaiTra: number = goc + tienLai;
+      return tongPhaiTra;
     }
 
-
-    // Use the PMT function for more accurate calculation
-    const monthlyPayment = calculatePMT(monthlyInterestRate, totalPayments, installmentAmount, 0, 0)
-
-    // Calculate total payment over loan term
-    const totalPayment = Math.abs(monthlyPayment) * totalPayments
-
-    // Calculate interest cost (total payments minus principal)
-    const interestCost = totalPayment - installmentAmount
-
-    // For debugging the loan amortization
-    console.log('Debug - Loan Details:')
-    console.log('  - Loan Amount:', installmentAmount)
-    console.log('  - Monthly Payment:', Math.abs(monthlyPayment))
-    console.log('  - Total Payments:', totalPayment)
-    console.log('  - Interest Cost:', interestCost)
-
-    console.log('Debug - Total Investment:', totalInvestment)
-    console.log('Debug - Upfront Payment:', upfrontPayment)
-    console.log('Debug - First monthly Loan Payment:', Math.abs(monthlyPayment))
-
-    // Calculate net yearly savings (after loan payments) and track debt repayment
-    let netYearlySavingsArray = []
-    let remainingDebt = installmentAmount // Start with the full loan amount
-    let debtRepaymentArray = [] // Track how much debt is repaid each year
-    let remainingDebtArray = [] // Track remaining debt at the end of each year
-
+    let currentDebt = BigInt(Math.ceil(tinhTongNo(installmentAmount, interestRate/100, totalPayments)))
+    const yearlySavings: bigint[] = []
+    const monthlySavingAfterLoan: bigint[]= []
+    let monthLoanPayback = 0
+    let loanPaymentLeft = totalPayments
+    let interestCost = BigInt(0)
     for (let year = 0; year < solarPanelLifespan; year++) {
-      // Calculate electricity savings for this year (before loan payments)
-      const yearlyElectricitySavings = yearlySavingsArray[year]
+      const monthlyCostSavingWithPriceIncrease = BigInt(Math.floor(monthlyCostSavings * Math.pow(1 + 0.04, year)))
+      console.log(`Debug - Year ${year}: Monthly Cost Saving with Price Increase = ${monthlyCostSavingWithPriceIncrease} VND, currentDebt = ${currentDebt} VND`)
+      for (let month = 1; month <= 12; month++) {
+        if (currentDebt > 0) {
+          let monthlyLoanPayment = BigInt(Math.ceil(calculatePMT(monthlyInterestRate, loanPaymentLeft, +installmentAmount.toString(), 0, 0)))
+          monthlyPayment.push(monthlyLoanPayment)
+          // console.log(`Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment.toFixed(0)} VND`)
+          const savingsAfterLoanPaid = BigInt(Math.max(0, +(monthlyCostSavingWithPriceIncrease + monthlyLoanPayment).toString()))
 
-      // Calculate yearly loan payment (if still within loan term)
-      let yearlyLoanPaymentTotal = 0
+          console.log(`Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`)
+          if (currentDebt > -monthlyLoanPayment) {
+            currentDebt = currentDebt + monthlyLoanPayment
+            console.log(currentDebt)
+          } else {
+            monthlyLoanPayment = -monthlyLoanPayment - currentDebt
+            currentDebt = BigInt(0)
+          }
+          console.log(`Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`)
+          if (yearlySavings[year] === undefined) yearlySavings[year] = BigInt(0) 
+          yearlySavings[year] = (yearlySavings[year]) + savingsAfterLoanPaid
 
-      if (year < installmentTerm) {
-        // Calculate the actual loan payments for this specific year
-        const startMonth = year * 12
-        const endMonth = Math.min(startMonth + 12, installmentTerm * 12)
-
-        // Sum up the monthly payments for this year
-        for (let month = startMonth; month < endMonth; month++) {
-          yearlyLoanPaymentTotal += Math.abs(monthlyPayment)
+          if (monthlySavingAfterLoan[year*12 + month] === undefined) monthlySavingAfterLoan[year*12 + month] = savingsAfterLoanPaid
+          
+          if (month == 12) {
+            cashFlows.push(yearlySavings[year])
+            const copyCurrentDebt = BigInt(currentDebt)
+            currentDebt = BigInt(Math.ceil(+copyCurrentDebt.toString() * (monthlyInterestRate * 12 +1 )))
+          }
+          loanPaymentLeft--
+          monthLoanPayback++
+        } else {
+          break
         }
       }
 
-      // Calculate net savings after loan payments
-      const yearlyNetSavings = yearlyElectricitySavings - yearlyLoanPaymentTotal
-      netYearlySavingsArray.push(yearlyNetSavings)
-
-      // Track debt repayment using amortization schedule
-      // For each month in the year, calculate interest and principal portions
-      let debtRepaidThisYear = 0
-
-      if (year < installmentTerm) {
-        // During loan term, calculate monthly amortization
-        const startMonth = year * 12
-        const endMonth = Math.min(startMonth + 12, installmentTerm * 12)
-
-        for (let month = startMonth; month < endMonth; month++) {
-          // Calculate interest for this month
-          const monthlyInterest = remainingDebt * monthlyInterestRate
-
-          // Principal payment is the total payment minus interest
-          const principalPayment = Math.min(remainingDebt, Math.abs(monthlyPayment) - monthlyInterest)
-
-          // Add to yearly principal repayment
-          debtRepaidThisYear += principalPayment
-
-          // Update remaining debt for next month's calculation
-          remainingDebt = Math.max(0, remainingDebt - principalPayment)
-        }
-      } else if (remainingDebt > 0) {
-        // After loan term, use savings to pay down any remaining debt
-        debtRepaidThisYear = Math.min(remainingDebt, yearlyNetSavings)
-        remainingDebt = Math.max(0, remainingDebt - debtRepaidThisYear)
+      if (currentDebt <= 0) {
+        console.log(`Debug - Year ${year}: Debt paid off`)
+        if (yearlySavings[year] === undefined) yearlySavings[year] = BigInt(0) 
+        yearlySavings[year] = (yearlySavings[year]) + monthlyCostSavingWithPriceIncrease * BigInt(12)
+        cashFlows.push(yearlySavings[year])
       }
 
-      // Store for tracking
-      debtRepaymentArray.push(debtRepaidThisYear)
-      remainingDebtArray.push(remainingDebt)
-
-      console.log(`Debug - Year ${year}: Net Savings = ${yearlyNetSavings.toFixed(0)}, Debt Repaid = ${debtRepaidThisYear.toFixed(0)}, Remaining Debt = ${remainingDebt.toFixed(0)}`)
+      console.log(`Debug - Year ${year}: Yearly Savings = ${yearlySavings[year]} VND`)
+      totalSavings = totalSavings +  yearlySavings[year]
     }
 
-    // Calculate payback based on upfront payment and cumulative savings
-    let cumulativeSavings = 0
-    let paybackPeriod = solarPanelLifespan // Default to max lifespan
-    let paybackYear = -1
-    let cumulativeSavingsArray = []
 
-    // For payback calculation, we need to consider:
-    // 1. The upfront payment that needs to be recovered
-    // 2. The debt that needs to be fully repaid
-
-    for (let year = 0; year < solarPanelLifespan; year++) {
-      // Add this year's net savings to cumulative savings
-      cumulativeSavings += netYearlySavingsArray[year]
-      cumulativeSavingsArray.push(cumulativeSavings)
-
-      // Check if we've reached the payback point:
-      // 1. We've recovered the upfront payment through cumulative savings
-      // 2. The debt has been fully repaid
-      const debtFullyRepaid = remainingDebtArray[year] === 0
-      console.log(`Debug - Year ${year}: Cumulative Savings = ${cumulativeSavings.toFixed(0)}, Debt Fully Repaid = ${debtFullyRepaid}`)
-      const upfrontPaymentRecovered = cumulativeSavings >= upfrontPayment
-
-      console.log(`Debug - Year ${year}: Cumulative Savings = ${cumulativeSavings.toFixed(0)}, Upfront Payment = ${upfrontPayment.toFixed(0)}, Debt Fully Repaid = ${debtFullyRepaid}`)
-
-      if (upfrontPaymentRecovered && debtFullyRepaid && paybackYear === -1) {
-        paybackYear = year
-        console.log(`Debug - Payback reached at year ${paybackYear}`)
-        break
-      }
-    }
-
-    // Calculate more accurate payback period
-    if (paybackYear === 0) {
-      // If payback happens in the first year
-      paybackPeriod = upfrontPayment / netYearlySavingsArray[0]
-      console.log('Debug - First year payback:', paybackPeriod)
-    } else if (paybackYear > 0) {
-      // If payback happens after the first year, use interpolation
-      const previousYearCumulativeSavings = cumulativeSavingsArray[paybackYear - 1]
-      const currentYearSavings = netYearlySavingsArray[paybackYear]
-
-      // Check if debt was fully repaid in the previous year
-      const debtRepaidPreviousYear = paybackYear > 0 ? remainingDebtArray[paybackYear - 1] === 0 : false
-
-      if (debtRepaidPreviousYear) {
-        // If debt was already repaid, we just need to recover the upfront payment
-        paybackPeriod = paybackYear + (upfrontPayment - previousYearCumulativeSavings) / currentYearSavings
-      } else {
-        // If debt was repaid in this year, we need to account for that
-        // This is a simplification - in reality we'd need to calculate the exact month
-        paybackPeriod = paybackYear + 0.5 // Assume debt was repaid halfway through the year
-      }
-
-      console.log('Debug - Interpolated payback calculation:')
-      console.log('  - Previous year cumulative:', previousYearCumulativeSavings)
-      console.log('  - Current year savings:', currentYearSavings)
-      console.log('  - Result:', paybackPeriod)
-    } else if (upfrontPayment <= 0 && installmentAmount <= 0) {
-      // If there's no upfront payment or loan, payback is immediate
-      paybackPeriod = 0
-      console.log('Debug - No investment payback needed')
-    } else {
-      // If no payback within lifespan
-      console.log('Debug - No payback within lifespan')
-    }
-
-    console.log('Debug - Final Payback Period:', paybackPeriod)
-
-    // Calculate lifetime savings (20 years)
-    const lifetimeSavings = totalSavings
-
-    // Calculate net monthly savings (monthly electricity savings - monthly loan payment)
-    const netMonthlySavings = monthlyCostSavings - Math.abs(monthlyPayment)
+    let monthInterestPayback = 0
 
     // Calculate net savings over loan term (electricity savings - total loan payments)
-    const savingsDuringLoanTerm = (monthlyCostSavings * totalPayments) - totalPayment
+    let savingsDuringLoanTerm = BigInt(0) 
+
+    let interestPayback = BigInt(0)
+    for (const i in monthlySavingAfterLoan) {
+        interestPayback = interestPayback + monthlySavingAfterLoan[i] as bigint
+        savingsDuringLoanTerm += monthlySavingAfterLoan[i]
+        if (interestPayback >= upfrontPayment) {
+            break
+        }
+        monthInterestPayback++
+    }
+
+    const paybackPeriod = (monthInterestPayback / 12).toFixed(2)
+    console.log('-------------------------------------------')
+    console.log('Debug - monthLoanPayback:', monthLoanPayback)
+
+
+    // Calculate net monthly savings (monthly electricity savings - monthly loan payment)
+    const netMonthlySavings = monthlyCostSavings - Math.abs(+monthlyPayment[0].toString())
+    const totalPayment = monthlyPayment.reduce((sum, payment) => sum + payment, BigInt(0))
 
     // Calculate savings after loan term
-    const savingsAfterLoanTerm = lifetimeSavings - savingsDuringLoanTerm
-
+    const savingsAfterLoanTermBigInt = totalSavings + totalPayment
+    const savingsAfterLoanTerm = savingsAfterLoanTermBigInt
+    console.log('-------------------------------------------')
+    console.log('Debug - savingsAfterLoanTerm:', savingsAfterLoanTerm)
+    console.log('Debug - savingsDuringLoanTerm:',savingsDuringLoanTerm)
+    // Calculate lifetime savings (20 years)
+    const lifetimeSavings =  savingsDuringLoanTerm + savingsAfterLoanTermBigInt
+    const copy = totalSavings
+    console.log('Debug - lifetimeSavings:',lifetimeSavings.toString())
     // Calculate ROI more accurately
-    const roi = (lifetimeSavings / totalInvestment) * 100
+    const roi = +copy.toString() / upfrontPayment * 100
+    interestCost = -(totalPayment + BigInt(Math.ceil(installmentAmount)))
 
+    const totalElectricityCostWithoutSolar = calculateTotalElectricityCostWithoutSolar(
+      calculatedMonthlyConsumption,
+      electricityType,
+      monthlyElectricityCostWithVAT,
+      solarPanelLifespan,
+      VAT,
+      bacDienSinhHoat,
+      giaKinhDoanh
+    );
     return {
       // Monthly values
       monthlyElectricityCost,
@@ -435,7 +329,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
       totalInvestment,
       installmentAmount,
       upfrontPayment,
-      monthlyPayment: Math.abs(monthlyPayment), // Ensure positive value for display
+      monthlyPayment: Math.abs(+monthlyPayment[0].toString()), // Ensure positive value for display
       totalPayment,
       interestCost,
 
@@ -446,11 +340,8 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
       savingsAfterLoanTerm,
       roi,
 
-      // Debt tracking
-      remainingDebtArray,
-      debtRepaymentArray,
-      netYearlySavingsArray,
-      cumulativeSavingsArray
+      // Add the total electricity cost without solar to the returned object
+      totalElectricityCostWithoutSolar,
     }
   }, [
     electricityType,
@@ -701,12 +592,27 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                     id="interest-rate"
                     type="number"
                     value={interestRate}
-                    onChange={(e) => setInterestRate(Number(e.target.value))}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      // Validate interest rate is between 0 and 100
+                      if (value > 0 && value < 100) {
+                        setInterestRate(value);
+                      } else if (value <= 0) {
+                        setInterestRate(0.01); // Minimum value
+                      } else if (value >= 100) {
+                        setInterestRate(99.99); // Maximum value
+                      }
+                    }}
                     className="mt-1"
                     step="0.01"
+                    min="0.01"
+                    max="99.99"
                   />
                   <span className="ml-2">%</span>
                 </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Lãi suất phải lớn hơn 0% và nhỏ hơn 100%
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -737,7 +643,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
 
               <div className="bg-gray-50 p-4 rounded-lg">
                 <div className="mb-3">
-                  <Label className="text-sm font-medium text-gray-700">Chi phí trả góp hàng tháng</Label>
+                  <Label className="text-sm font-medium text-gray-700">Chi phí trả góp tháng đầu</Label>
                   <div className="flex items-center mt-1">
                     <Input
                       value={formatNumber(calculations.monthlyPayment)}
@@ -752,7 +658,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                   <Label className="text-sm font-medium text-gray-700">Tổng chi phí trả góp</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={formatNumber(calculations.totalPayment)}
+                      value={formatNumber(-+calculations.totalPayment.toString())}
                       disabled
                       className="bg-white font-bold text-gray-700 border-gray-300"
                     />
@@ -764,7 +670,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                   <Label className="text-sm font-medium text-gray-700">Chi phí lãi vay</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={formatNumber(calculations.interestCost)}
+                      value={formatNumber(+calculations.interestCost.toString())}
                       disabled
                       className="bg-white font-bold text-gray-700 border-gray-300"
                     />
@@ -808,7 +714,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                   <Label className="text-sm font-medium text-amber-800">Lợi nhuận đầu tư (ROI)</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={`${calculations.roi.toFixed(2)}%`}
+                      value={`${formatNumber(calculations.roi * 100)}%`}
                       disabled
                       className="bg-white font-bold text-amber-700 border-amber-200"
                     />
@@ -819,7 +725,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                   <Label className="text-sm font-medium text-amber-800">Thời gian thu hồi vốn</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={calculations.upfrontPayment > 0 ? calculations.paybackPeriod.toFixed(2) : "Không bỏ vốn"}
+                      value={calculations.upfrontPayment > 0 ? calculations.paybackPeriod : "Không bỏ vốn"}
                       disabled
                       className="bg-white font-bold text-amber-700 border-amber-200"
                     />
@@ -834,7 +740,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                 </Label>
                 <div className="flex items-center mt-1">
                   <Input
-                    value={formatNegativeNumber(calculations.savingsDuringLoanTerm)}
+                    value={formatNegativeNumber(+calculations.savingsDuringLoanTerm.toString())}
                     disabled
                     className={`bg-white font-bold border-red-200 ${
                       calculations.savingsDuringLoanTerm >= 0 ? "text-green-600" : "text-red-600"
@@ -855,14 +761,14 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                 </Label>
                 <div className="flex items-center mt-1">
                   <Input
-                    value={formatNumber(calculations.savingsAfterLoanTerm)}
+                    value={formatNumber(+calculations.savingsAfterLoanTerm.toString())}
                     disabled
                     className="bg-white font-bold text-green-600 border-green-200"
                   />
                   <span className="ml-2 font-medium text-green-800">VND</span>
                 </div>
                 <p className="text-xs text-gray-600 mt-1">
-                  Sau khi trả hết nợ, bạn sẽ tiết kiệm được khoảng {formatNumber(calculations.savingsAfterLoanTerm / (solarPanelLifespan - installmentTerm))} VND mỗi năm
+                  Sau khi trả hết nợ, bạn sẽ tiết kiệm được khoảng {formatNumber(+calculations.savingsAfterLoanTerm.toString() / (solarPanelLifespan - installmentTerm))} VND mỗi năm
                 </p>
               </div>
             </CardContent>
@@ -893,7 +799,7 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h3 className="font-medium text-blue-800 mb-2">Trong thời gian trả góp ({installmentTerm} năm)</h3>
                   <div className="text-2xl font-bold text-blue-700">
-                    {formatNegativeNumber(calculations.savingsDuringLoanTerm)} VND
+                    {formatNegativeNumber(+calculations.savingsDuringLoanTerm.toString())} VND
                   </div>
                   <p className="text-sm text-gray-600 mt-1">
                     {calculations.savingsDuringLoanTerm >= 0
@@ -905,20 +811,20 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
                 <div className="bg-green-50 p-4 rounded-lg">
                   <h3 className="font-medium text-green-800 mb-2">Sau khi trả hết nợ ({solarPanelLifespan - installmentTerm} năm)</h3>
                   <div className="text-2xl font-bold text-green-700">
-                    {formatNumber(calculations.savingsAfterLoanTerm)} VND
+                    {formatNumber(+calculations.savingsAfterLoanTerm.toString())} VND
                   </div>
                   <p className="text-sm text-gray-600 mt-1">
-                    Trung bình {formatNumber(calculations.savingsAfterLoanTerm / (solarPanelLifespan - installmentTerm))} VND/năm
+                    Trung bình {formatNumber(+calculations.savingsAfterLoanTerm.toString() / (solarPanelLifespan - installmentTerm))} VND/năm
                   </p>
                 </div>
 
                 <div className="bg-amber-50 p-4 rounded-lg">
                   <h3 className="font-medium text-amber-800 mb-2">Tổng tiết kiệm ({solarPanelLifespan} năm)</h3>
                   <div className="text-2xl font-bold text-amber-700">
-                    {formatNumber(calculations.lifetimeSavings)} VND
+                    {formatNumber(+calculations.lifetimeSavings.toString())} VND
                   </div>
                   <p className="text-sm text-gray-600 mt-1">
-                    ROI: {calculations.roi.toFixed(2)}% | Thu hồi vốn: {calculations.paybackPeriod.toFixed(2)} năm
+                    ROI: {formatNumber(+calculations.roi.toString())}% | Thu hồi vốn: {calculations.paybackPeriod} năm
                   </p>
                 </div>
               </div>
@@ -937,5 +843,33 @@ const [totalInvestment, setTotalInvestment] = useState(() => {
       </div>
     </div>
   )
+}
+
+// Function to calculate total electricity cost over the system lifespan without solar panels
+function calculateTotalElectricityCostWithoutSolar(
+  monthlyConsumption: number,
+  electricityType: string,
+  monthlyElectricityCostWithVAT: number,
+  solarPanelLifespan: number,
+  VAT: number,
+  bacDienSinhHoat: any,
+  giaKinhDoanh: any
+) {
+  let totalCost = 0;
+  
+  for (let year = 0; year < solarPanelLifespan; year++) {
+    // Apply annual electrical price increase (4% per year)
+    const priceIncreaseFactor = Math.pow(1 + 0.04, year);
+    
+    // Calculate original electricity cost with price increase for this year
+    const yearlyElectricityCostWithIncrease = monthlyElectricityCostWithVAT * 12 * priceIncreaseFactor;
+    
+    // Add to total cost
+    totalCost += yearlyElectricityCostWithIncrease;
+    
+    console.log(`Debug - Year ${year} without solar: Electricity Cost = ${yearlyElectricityCostWithIncrease.toFixed(0)} VND`);
+  }
+  
+  return totalCost;
 }
 
