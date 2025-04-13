@@ -2,86 +2,31 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Slider } from "@/components/ui/slider"
-import Link from "next/link"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
+import { useState } from "react"
 
-// List of 63 provinces in Vietnam
-const vietnamProvinces = [
-  "An Giang",
-  "Bà Rịa - Vũng Tàu",
-  "Bắc Giang",
-  "Bắc Kạn",
-  "Bạc Liêu",
-  "Bắc Ninh",
-  "Bến Tre",
-  "Bình Định",
-  "Bình Dương",
-  "Bình Phước",
-  "Bình Thuận",
-  "Cà Mau",
-  "Cần Thơ",
-  "Cao Bằng",
-  "Đà Nẵng",
-  "Đắk Lắk",
-  "Đắk Nông",
-  "Điện Biên",
-  "Đồng Nai",
-  "Đồng Tháp",
-  "Gia Lai",
-  "Hà Giang",
-  "Hà Nam",
-  "Hà Nội",
-  "Hà Tĩnh",
-  "Hải Dương",
-  "Hải Phòng",
-  "Hậu Giang",
-  "Hòa Bình",
-  "Hưng Yên",
-  "Khánh Hòa",
-  "Kiên Giang",
-  "Kon Tum",
-  "Lai Châu",
-  "Lâm Đồng",
-  "Lạng Sơn",
-  "Lào Cai",
-  "Long An",
-  "Nam Định",
-  "Nghệ An",
-  "Ninh Bình",
-  "Ninh Thuận",
-  "Phú Thọ",
-  "Phú Yên",
-  "Quảng Bình",
-  "Quảng Nam",
-  "Quảng Ngãi",
-  "Quảng Ninh",
-  "Quảng Trị",
-  "Sóc Trăng",
-  "Sơn La",
-  "Tây Ninh",
-  "Thái Bình",
-  "Thái Nguyên",
-  "Thanh Hóa",
-  "Thừa Thiên Huế",
-  "Tiền Giang",
-  "TP Hồ Chí Minh",
-  "Trà Vinh",
-  "Tuyên Quang",
-  "Vĩnh Long",
-  "Vĩnh Phúc",
-  "Yên Bái",
-]
+import { provincesSolarData } from "@/lib/calculations"
 
 export default function SolarCalculator() {
   const [location, setLocation] = useState("")
+  const [sunHours, setSunHours] = useState(0)
+  const [production, setProduction] = useState(0)
   const [electricityType, setElectricityType] = useState("sinh-hoat")
   const [monthlyUsage, setMonthlyUsage] = useState("")
   const [usageTime, setUsageTime] = useState(70)
   const [monthlyUsageError, setMonthlyUsageError] = useState("")
+
+  const handleLocationChange = (selectedLocation: string) => {
+    setLocation(selectedLocation)
+    const provinceData = provincesSolarData.find(p => p.name === selectedLocation)
+    if (provinceData) {
+      setSunHours(provinceData.sunHours)
+      setProduction(provinceData.production)
+    }
+  }
 
   const handleMonthlyUsageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/[^0-9]/g, "")
@@ -100,6 +45,9 @@ export default function SolarCalculator() {
     // Handle form submission logic here
     const locationValue = location ? location.toLowerCase().replace(/ /g, "-") : ""
     console.log({ location: locationValue, electricityType, monthlyUsage, usageTime })
+    
+    // Navigate to financial analysis page with all parameters
+    window.location.href = `/phan-tich-hieu-qua?location=${encodeURIComponent(location)}&usageTime=${usageTime}&monthlyUsage=${monthlyUsage}&electricityType=${electricityType}`
   }
 
   // Common button style class to ensure consistency
@@ -110,23 +58,31 @@ export default function SolarCalculator() {
     <form onSubmit={handleSubmit} className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-6">
       <div className="mb-4">
         <label className="block text-white text-sm font-medium mb-2">Khu vực *</label>
-        <Select value={location} onValueChange={setLocation}>
-          <SelectTrigger className="w-full" placeholder="Chọn tỉnh/thành phố">
-            {location || <span className="text-muted-foreground">Chọn tỉnh/thành phố</span>}
+        <Select value={location} onValueChange={handleLocationChange}>
+          <SelectTrigger className="w-full">
+            <span className={location ? "text-foreground font-medium" : "text-muted-foreground"}>
+              {location || "Chọn tỉnh/thành phố"}
+            </span>
           </SelectTrigger>
           <SelectContent className="max-h-[200px] overflow-y-auto">
-            {vietnamProvinces.map((province) => (
-              <SelectItem key={province} value={province} className="py-1 text-xs">
-                {province}
+            {provincesSolarData.map((province) => (
+              <SelectItem key={province.name} value={province.name} className="py-1 text-xs">
+                {province.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {location && (
+          <div className="mt-2 text-xs text-white">
+            <p>Số giờ nắng: {sunHours} giờ/ngày</p>
+            <p>Sản lượng điện: {production} kWh/kWp/năm</p>
+          </div>
+        )}
       </div>
 
       <div className="mb-4">
         <label className="block text-white text-sm font-medium mb-2">Giá điện *</label>
-        <div className="flex space-x-4">
+        <div className="flex flex-col space-y-2">
           <div className="flex items-center">
             <input
               type="radio"
@@ -144,15 +100,43 @@ export default function SolarCalculator() {
           <div className="flex items-center">
             <input
               type="radio"
-              id="kinh-doanh"
+              id="kinh-doanh-duoi-6kv"
               name="electricity-type"
-              value="kinh-doanh"
-              checked={electricityType === "kinh-doanh"}
-              onChange={() => setElectricityType("kinh-doanh")}
+              value="kinh-doanh-duoi-6kv"
+              checked={electricityType === "kinh-doanh-duoi-6kv"}
+              onChange={() => setElectricityType("kinh-doanh-duoi-6kv")}
               className="mr-2"
             />
-            <Label htmlFor="kinh-doanh" className="text-white cursor-pointer">
-              Kinh doanh
+            <Label htmlFor="kinh-doanh-duoi-6kv" className="text-white cursor-pointer">
+              Kinh doanh dưới 6kV
+            </Label>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="radio"
+              id="kinh-doanh-6kv-22kv"
+              name="electricity-type"
+              value="kinh-doanh-6kv-22kv"
+              checked={electricityType === "kinh-doanh-6kv-22kv"}
+              onChange={() => setElectricityType("kinh-doanh-6kv-22kv")}
+              className="mr-2"
+            />
+            <Label htmlFor="kinh-doanh-6kv-22kv" className="text-white cursor-pointer">
+              Kinh doanh từ 6kV đến 22kV
+            </Label>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="radio"
+              id="kinh-doanh-tren-22kv"
+              name="electricity-type"
+              value="kinh-doanh-tren-22kv"
+              checked={electricityType === "kinh-doanh-tren-22kv"}
+              onChange={() => setElectricityType("kinh-doanh-tren-22kv")}
+              className="mr-2"
+            />
+            <Label htmlFor="kinh-doanh-tren-22kv" className="text-white cursor-pointer">
+              Kinh doanh từ 22kV trở lên
             </Label>
           </div>
         </div>
@@ -178,10 +162,15 @@ export default function SolarCalculator() {
           <Slider
             value={[usageTime]}
             onValueChange={(values) => setUsageTime(values[0])}
+            min={50}
             max={100}
             step={10}
             className="my-4"
           />
+          <div className="flex justify-between text-xs text-white mb-1">
+            <span>50%</span>
+            <span>100%</span>
+          </div>
           <div className="flex justify-end">
             <span className="inline-block bg-white text-amber-700 font-medium px-2 py-1 rounded-md">{usageTime}%</span>
           </div>
@@ -189,9 +178,9 @@ export default function SolarCalculator() {
       </div>
 
       <div className="space-y-3">
-        <Link href="/phan-tich-hieu-qua" className={buttonClass}>
+        <button type="submit" className={buttonClass}>
           Nhận báo giá
-        </Link>
+        </button>
       </div>
     </form>
   )

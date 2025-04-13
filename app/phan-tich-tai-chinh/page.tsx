@@ -7,18 +7,34 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import {
   bacDienSinhHoat,
+  calculateSystemCapacity,
   formatNegativeNumber,
   formatNumber,
   giaKinhDoanh,
+  provincesSolarData,
   tinhSanLuongDien,
   tinhSanLuongTietKiem,
   tinhSanLuongTieuThu,
+  tinhSoDienTuTienDien,
   tinhTienDienKinhDoanh,
-  tinhTienDienSinhHoat
+  tinhTienDienSinhHoat,
+  VAT
 } from "@/lib/calculations"
 import { Home } from "lucide-react"
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
+
+// Add this near the top of the file, after imports
+const INTEREST_RATES = {
+  1: 12.00, // 12% for 1 year
+  2: 13.00, // 13% for 2 years
+  3: 14.00, // 14% for 3 years
+  4: 15.00, // 15% for 4 years
+  5: 15.00, // 15% for 5 years
+  6: 16.00, // 16% for 6 years
+  7: 16.00  // 16% for 7 years
+};
 
 // Function to calculate monthly payment (PMT formula)
 function calculatePMT(rate, nper, pv, fv = 0, type = 0) {
@@ -38,61 +54,103 @@ function calculatePMT(rate, nper, pv, fv = 0, type = 0) {
   return pmt;
 }
 
-// Function to estimate electricity consumption from bill amount
-function tinhSoDienTuTienDien(tienDien, loaiDien, bacDien, giaKinhDoanh) {
-  if (!tienDien || tienDien <= 0) return 0;
 
-  // Remove VAT from the bill amount
-  const tienDienTruocVAT = tienDien / 1.08;
-
-  if (loaiDien === "sinh-hoat") {
-    // Binary search to find the consumption that results in this bill
-    let min = 0;
-    let max = 10000; // Reasonable upper limit
-
-    while (max - min > 1) {
-      const mid = Math.floor((min + max) / 2);
-      const calculatedBill = tinhTienDienSinhHoat(mid, bacDien);
-
-      if (calculatedBill < tienDienTruocVAT) {
-        min = mid;
-      } else {
-        max = mid;
-      }
-    }
-
-    return min;
-  } else {
-    // For commercial, it's a simple division
-    return tienDienTruocVAT / giaKinhDoanh[0].gia;
-  }
-}
 
 export default function FinancialAnalysisPage() {
   // No need to define electricity pricing tiers here anymore
-  const VAT = 0.08 // 8% VAT on electricity
+  const searchParams = useSearchParams()
+  
+  // Get parameters from URL
+  const locationParam = searchParams.get('location') || ""
+  const usageTimeParam = searchParams.get('usageTime') || "90"
+  const electricityCostParam = searchParams.get('monthlyUsage') || ""
+  const electricityTypeParam = searchParams.get('electricityType') || "sinh-hoat"
+  const monthlyConsumptionParam = searchParams.get('monthlyConsumption') || "0"
+  console.log("Debug - electricityCostParam:", electricityCostParam)
+  console.log("Debug - electricityTypeParam:", electricityTypeParam)
+  console.log("Debug - monthlyConsumptionParam:", monthlyConsumptionParam)
+  console.log("Debug - locationParam:", locationParam)
+  console.log("Debug - usageTimeParam:", usageTimeParam)
+  
+  
+  const [monthlyConsumption, setMonthlyConsumption] = useState(monthlyConsumptionParam) // Optional direct input of electricity cost
+  
+  const [location, setLocation] = useState(locationParam)
+  
+  // Find province data based on location
+  const provinceData = useMemo(() => {
+    return provincesSolarData.find(p => p.name === location) || 
+           { name: "", production: 0, sunHours: 5 } // Default values if not found
+  }, [location])
 
-  // System information state
-  const [systemCapacity, setSystemCapacity] = useState(4.8) // kWp
+  // Set daytime usage from URL parameter
+  const [daytimeUsagePercent, setDaytimeUsagePercent] = useState(
+    parseInt(usageTimeParam, 10) || 90
+  )
+  
+  const [safetyRatio, setSafetyRatio] = useState(90)
+  
+  // Use sunHours from province data
+  const [sunHoursPerDay, setSunHoursPerDay] = useState(provinceData.sunHours || 5)
+  
+  const [productionPerLocation, setProductionPerLocation] = useState(provinceData.production || 0) // kWh/kWp
+    // Update sunHours when location changes
+  useEffect(() => {
+    if (provinceData.production) {
+      setProductionPerLocation(provinceData.production)
+    }
+  }, [provinceData])
+  // Calculate system capacity dynamically
+  const [systemCapacity, setSystemCapacity] = useState(() => 
+    calculateSystemCapacity(
+      +monthlyConsumption, 
+      daytimeUsagePercent, 
+      productionPerLocation, 
+      safetyRatio
+    )
+  )
+
+  console.log("Debug - systemCapacityyy:", systemCapacity)
+  
+  // Update system capacity when relevant parameters change
+  useEffect(() => {
+    const newCapacity = calculateSystemCapacity(
+      +monthlyConsumption,
+      daytimeUsagePercent,
+      sunHoursPerDay,
+      safetyRatio
+    )
+    // setSystemCapacity(newCapacity)
+  }, [monthlyConsumption, daytimeUsagePercent, sunHoursPerDay, safetyRatio])
+  
+  // Update sunHours when location changes
+  useEffect(() => {
+    if (provinceData.sunHours) {
+      setSunHoursPerDay(provinceData.sunHours)
+    }
+  }, [provinceData])
+
   const [costPerKWp, setCostPerKWp] = useState(10_000_000) // Default 10,000,000 VND/kWp
-  const [safetyRatio, setSafetyRatio] = useState(100) // Safety ratio
-
-  const [sunHoursPerDay, setSunHoursPerDay] = useState(5) // Average sun hours per day
   const [systemEfficiency, setSystemEfficiency] = useState(100) // 85% efficiency
 
   // Customer usage state
-  const [electricityType, setElectricityType] = useState("sinh-hoat")
-  const [monthlyConsumption, setMonthlyConsumption] = useState(679) // kWh/month
-  const [daytimeUsagePercent, setDaytimeUsagePercent] = useState(90)
-  const [electricityCost, setElectricityCost] = useState("") // Optional direct input of electricity cost
+  const [electricityType, setElectricityType] = useState(electricityTypeParam)
+  const [electricityCost, setElectricityCost] = useState(electricityCostParam) // Optional direct input of electricity cost
+
 
   // Use a single state for daytime usage
   const dayTimeUsagePercent = daytimeUsagePercent
 
   // Installment options
   const [installmentRate, setInstallmentRate] = useState(90) // % of total investment to be financed
+
+    // Update the interest rate state and remove direct setting
   const [installmentTerm, setInstallmentTerm] = useState(3) // years
-  const [interestRate, setInterestRate] = useState(7.68) // 7,68% annual interest rate
+  const [interestRate, setInterestRate] = useState(INTEREST_RATES[3]) // Initialize with 3-year rate
+    // Add effect to update interest rate when installment term changes
+  useEffect(() => {
+    setInterestRate(INTEREST_RATES[installmentTerm as keyof typeof INTEREST_RATES])
+  }, [installmentTerm])
 
   // Constants for calculations
   const batteryDepreciationRate = 0.7 // 0.7% battery depreciation per year
@@ -105,7 +163,7 @@ export default function FinancialAnalysisPage() {
     const totalPayments = installmentTerm * 12
     const [totalInvestment, setTotalInvestment] = useState(() => {
       // Calculate initial investment cost before VAT
-      const initialInvestmentBeforeVAT = systemCapacity * costPerKWp * (safetyRatio / 100)
+      const initialInvestmentBeforeVAT = systemCapacity * costPerKWp
 
       // Calculate total investment including VAT
       return initialInvestmentBeforeVAT * (1 + VAT)
@@ -117,19 +175,13 @@ export default function FinancialAnalysisPage() {
     // Calculate installment amount (amount to be financed)
     const installmentAmount = totalInvestment * (installmentRate / 100)
 
-    // Initial investment cost before VAT
-    const initialInvestmentBeforeVAT = systemCapacity * costPerKWp * (safetyRatio / 100)
+    const monthlyPayment: number[] = []
 
-    // Initial investment cost with VAT
-
-    // Annual maintenance cost
-    const annualMaintenanceCost = systemCapacity * maintenanceCostPerKWp
-  const monthlyPayment: bigint[] = []
-
-  // Calculate investment efficiency
+    // Calculate investment efficiency
   const calculations = useMemo(() => {
     // Initial investment cost before VAT
-    const initialInvestmentBeforeVAT = systemCapacity * costPerKWp * (safetyRatio / 100)
+    const initialInvestmentBeforeVAT =
+      systemCapacity * costPerKWp * (safetyRatio / 100)
 
     // Initial investment cost with VAT
     const initialInvestment = initialInvestmentBeforeVAT * (1 + VAT)
@@ -145,50 +197,78 @@ export default function FinancialAnalysisPage() {
     if (isNaN(monthlyElectricityCost)) {
       // Calculate from consumption if not provided
       if (electricityType === "sinh-hoat") {
-        monthlyElectricityCost = tinhTienDienSinhHoat(monthlyConsumption, bacDienSinhHoat)
+        monthlyElectricityCost = tinhTienDienSinhHoat(
+          +monthlyConsumption,
+          bacDienSinhHoat
+        )
       } else {
-        monthlyElectricityCost = tinhTienDienKinhDoanh(monthlyConsumption, giaKinhDoanh)
+        monthlyElectricityCost = tinhTienDienKinhDoanh(
+          +monthlyConsumption,
+          giaKinhDoanh
+        )
       }
     }
 
     // Apply VAT
-    const monthlyElectricityCostWithVAT = monthlyElectricityCost * (1 + VAT)
+    const monthlyElectricityCostWithVAT = monthlyElectricityCost
 
     // Calculate solar production
-    const monthlySolarProduction = tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency)
+    const monthlySolarProduction = tinhSanLuongDien(
+      systemCapacity,
+      sunHoursPerDay,
+      systemEfficiency
+    )
 
     // Calculate solar consumption (based on daytime usage)
-    const monthlySolarConsumption = tinhSanLuongTieuThu(monthlySolarProduction, dayTimeUsagePercent)
+    const monthlySolarConsumption = tinhSanLuongTieuThu(
+      monthlySolarProduction,
+      dayTimeUsagePercent
+    )
 
     // Calculate energy saved by solar
-    const calculatedMonthlyConsumption = electricityCost ?
-      tinhSoDienTuTienDien(Number(electricityCost), electricityType, bacDienSinhHoat, giaKinhDoanh) :
-      monthlyConsumption
+    const calculatedMonthlyConsumption = electricityCost
+      ? tinhSoDienTuTienDien(
+          Number(electricityCost),
+          electricityType,
+          bacDienSinhHoat,
+        )
+      : +monthlyConsumption
 
-    const monthlySolarSavings = tinhSanLuongTietKiem(calculatedMonthlyConsumption, monthlySolarConsumption)
+    const monthlySolarSavings = tinhSanLuongTietKiem(
+      calculatedMonthlyConsumption,
+      monthlySolarConsumption
+    )
 
     // Calculate remaining grid consumption
-    const remainingGridConsumption = calculatedMonthlyConsumption - monthlySolarSavings
+    const remainingGridConsumption =
+      calculatedMonthlyConsumption - monthlySolarSavings
 
     // Calculate new electricity bill
     let newMonthlyElectricityCost = 0
     if (electricityType === "sinh-hoat") {
-      newMonthlyElectricityCost = tinhTienDienSinhHoat(remainingGridConsumption, bacDienSinhHoat)
+      newMonthlyElectricityCost = tinhTienDienSinhHoat(
+        remainingGridConsumption,
+        bacDienSinhHoat
+      )
     } else {
-      newMonthlyElectricityCost = tinhTienDienKinhDoanh(remainingGridConsumption, giaKinhDoanh)
+      newMonthlyElectricityCost = tinhTienDienKinhDoanh(
+        remainingGridConsumption,
+        giaKinhDoanh
+      )
     }
 
     // Apply VAT to new bill
-    const newMonthlyElectricityCostWithVAT = newMonthlyElectricityCost * (1 + VAT)
+    const newMonthlyElectricityCostWithVAT =
+      newMonthlyElectricityCost * (1 + VAT)
 
     // Calculate monthly savings
-    const monthlyCostSavings = monthlyElectricityCostWithVAT - newMonthlyElectricityCostWithVAT
+    const monthlyCostSavings =
+      monthlyElectricityCostWithVAT - newMonthlyElectricityCostWithVAT
 
     // Calculate annual savings
     const annualCostSavings = monthlyCostSavings * 12
 
     // Calculate solar panel lifespan savings with degradation and price increase
-    let totalSavings = BigInt(0) 
     let yearlySavingsArray = [] // Array to store yearly savings for payback calculation
     let totalSavingsAfterLoanPaid = 0 // Track savings after loan is paid off
 
@@ -196,51 +276,84 @@ export default function FinancialAnalysisPage() {
     // and then the net cash flows for each subsequent year
     let cashFlows = []
 
-    console.log('-------------------------------------------')
-    console.log('Debug - Total Investment:', totalInvestment)
-    console.log('Debug - Monthly Consumption:', calculatedMonthlyConsumption)
-    console.log('Debug - System Capacity:', systemCapacity)
-    function tinhTongNo(goc: number, laiSuatNam: number, thang: number): number {
-      const laiSuatThang: number = laiSuatNam / 12;
-      const tienLai: number = goc * laiSuatThang * thang;
-      const tongPhaiTra: number = goc + tienLai;
-      return tongPhaiTra;
+    console.log("-------------------------------------------")
+    console.log("Debug - Total Investment:", totalInvestment)
+    console.log("Debug - Monthly Consumption:", calculatedMonthlyConsumption)
+    console.log("Debug - System Capacity:", systemCapacity)
+    function tinhTongNo(
+      goc: number,
+      laiSuatNam: number,
+      thang: number
+    ): number {
+      const laiSuatThang: number = laiSuatNam / 12
+      const tienLai: number = goc * laiSuatThang * thang
+      const tongPhaiTra: number = goc + tienLai
+      return tongPhaiTra
     }
 
-    let currentDebt = BigInt(Math.ceil(tinhTongNo(installmentAmount, interestRate/100, totalPayments)))
-    const yearlySavings: bigint[] = []
-    const monthlySavingAfterLoan: bigint[]= []
+    let currentDebt = Math.ceil(
+      tinhTongNo(installmentAmount, interestRate / 100, totalPayments)
+    )
+    
+    const yearlySavings: number[] = []
+    const monthlySavingAfterLoan: number[] = []
     let monthLoanPayback = 0
     let loanPaymentLeft = totalPayments
-    let interestCost = BigInt(0)
+    let interestCost = 0
+    let totalSavings = 0
     for (let year = 0; year < solarPanelLifespan; year++) {
-      const monthlyCostSavingWithPriceIncrease = BigInt(Math.floor(monthlyCostSavings * Math.pow(1 + 0.04, year)))
-      console.log(`Debug - Year ${year}: Monthly Cost Saving with Price Increase = ${monthlyCostSavingWithPriceIncrease} VND, currentDebt = ${currentDebt} VND`)
+      const monthlyCostSavingWithPriceIncrease = 
+        Math.floor(monthlyCostSavings * Math.pow(1 + 0.04, year))
+      console.log(
+        `Debug - Year ${year}: Monthly Cost Saving with Price Increase = ${monthlyCostSavingWithPriceIncrease} VND, currentDebt = ${currentDebt} VND`
+      )
       for (let month = 1; month <= 12; month++) {
         if (currentDebt > 0) {
-          let monthlyLoanPayment = BigInt(Math.ceil(calculatePMT(monthlyInterestRate, loanPaymentLeft, +installmentAmount.toString(), 0, 0)))
+          let monthlyLoanPayment = Math.ceil(
+              calculatePMT(
+                monthlyInterestRate,
+                loanPaymentLeft,
+                +installmentAmount.toString(),
+                0,
+                0
+              )
+            )
+          
           monthlyPayment.push(monthlyLoanPayment)
           // console.log(`Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment.toFixed(0)} VND`)
-          const savingsAfterLoanPaid = BigInt(Math.max(0, +(monthlyCostSavingWithPriceIncrease + monthlyLoanPayment).toString()))
+          const savingsAfterLoanPaid = Math.max(
+              0,
+              +(
+                monthlyCostSavingWithPriceIncrease + monthlyLoanPayment
+              ).toString()
+            )
 
-          console.log(`Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`)
+          console.log(
+            `Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`
+          )
           if (currentDebt > -monthlyLoanPayment) {
             currentDebt = currentDebt + monthlyLoanPayment
             console.log(currentDebt)
           } else {
             monthlyLoanPayment = -monthlyLoanPayment - currentDebt
-            currentDebt = BigInt(0)
+            currentDebt = (0)
           }
-          console.log(`Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`)
-          if (yearlySavings[year] === undefined) yearlySavings[year] = BigInt(0) 
-          yearlySavings[year] = (yearlySavings[year]) + savingsAfterLoanPaid
+          console.log(
+            `Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`
+          )
+          if (yearlySavings[year] === undefined) yearlySavings[year] = (0)
+          yearlySavings[year] = yearlySavings[year] + savingsAfterLoanPaid
 
-          if (monthlySavingAfterLoan[year*12 + month] === undefined) monthlySavingAfterLoan[year*12 + month] = savingsAfterLoanPaid
-          
+          if (monthlySavingAfterLoan[year * 12 + month] === undefined)
+            monthlySavingAfterLoan[year * 12 + month] = savingsAfterLoanPaid
+
           if (month == 12) {
             cashFlows.push(yearlySavings[year])
-            const copyCurrentDebt = BigInt(currentDebt)
-            currentDebt = BigInt(Math.ceil(+copyCurrentDebt.toString() * (monthlyInterestRate * 12 +1 )))
+            const copyCurrentDebt = (currentDebt)
+            currentDebt = Math.ceil(
+                +copyCurrentDebt.toString() * (monthlyInterestRate * 12 + 1)
+              )
+            
           }
           loanPaymentLeft--
           monthLoanPayback++
@@ -251,63 +364,69 @@ export default function FinancialAnalysisPage() {
 
       if (currentDebt <= 0) {
         console.log(`Debug - Year ${year}: Debt paid off`)
-        if (yearlySavings[year] === undefined) yearlySavings[year] = BigInt(0) 
-        yearlySavings[year] = (yearlySavings[year]) + monthlyCostSavingWithPriceIncrease * BigInt(12)
+        if (yearlySavings[year] === undefined) yearlySavings[year] = (0)
+        yearlySavings[year] =
+          yearlySavings[year] + monthlyCostSavingWithPriceIncrease * (12)
         cashFlows.push(yearlySavings[year])
       }
 
-      console.log(`Debug - Year ${year}: Yearly Savings = ${yearlySavings[year]} VND`)
-      totalSavings = totalSavings +  yearlySavings[year]
+      console.log(
+        `Debug - Year ${year}: Yearly Savings = ${yearlySavings[year]} VND`
+      )
+      totalSavings = totalSavings + yearlySavings[year]
     }
-
 
     let monthInterestPayback = 0
 
     // Calculate net savings over loan term (electricity savings - total loan payments)
-    let savingsDuringLoanTerm = BigInt(0) 
+    let savingsDuringLoanTerm = (0)
 
-    let interestPayback = BigInt(0)
+    let interestPayback = (0)
     for (const i in monthlySavingAfterLoan) {
-        interestPayback = interestPayback + monthlySavingAfterLoan[i] as bigint
-        savingsDuringLoanTerm += monthlySavingAfterLoan[i]
-        if (interestPayback >= upfrontPayment) {
-            break
-        }
-        monthInterestPayback++
+      interestPayback = (interestPayback + monthlySavingAfterLoan[i])
+      savingsDuringLoanTerm += monthlySavingAfterLoan[i]
+      if (interestPayback >= upfrontPayment) {
+        break
+      }
+      monthInterestPayback++
     }
 
     const paybackPeriod = (monthInterestPayback / 12).toFixed(2)
-    console.log('-------------------------------------------')
-    console.log('Debug - monthLoanPayback:', monthLoanPayback)
-
+    console.log("-------------------------------------------")
+    console.log("Debug - monthLoanPayback:", monthLoanPayback)
 
     // Calculate net monthly savings (monthly electricity savings - monthly loan payment)
-    const netMonthlySavings = monthlyCostSavings - Math.abs(+monthlyPayment[0].toString())
-    const totalPayment = monthlyPayment.reduce((sum, payment) => sum + payment, BigInt(0))
+    const netMonthlySavings =
+      monthlyCostSavings - Math.abs(monthlyPayment[0])
+    const totalPayment = monthlyPayment.reduce(
+      (sum, payment) => sum + payment,
+      0
+    )
 
     // Calculate savings after loan term
     const savingsAfterLoanTermBigInt = totalSavings + totalPayment
     const savingsAfterLoanTerm = savingsAfterLoanTermBigInt
-    console.log('-------------------------------------------')
-    console.log('Debug - savingsAfterLoanTerm:', savingsAfterLoanTerm)
-    console.log('Debug - savingsDuringLoanTerm:',savingsDuringLoanTerm)
+    console.log("-------------------------------------------")
+    console.log("Debug - savingsAfterLoanTerm:", savingsAfterLoanTerm)
+    console.log("Debug - savingsDuringLoanTerm:", savingsDuringLoanTerm)
     // Calculate lifetime savings (20 years)
-    const lifetimeSavings =  savingsDuringLoanTerm + savingsAfterLoanTermBigInt
+    const lifetimeSavings = savingsDuringLoanTerm + savingsAfterLoanTermBigInt
     const copy = totalSavings
-    console.log('Debug - lifetimeSavings:',lifetimeSavings.toString())
+    console.log("Debug - lifetimeSavings:", lifetimeSavings.toString())
     // Calculate ROI more accurately
-    const roi = +copy.toString() / upfrontPayment * 100
-    interestCost = -(totalPayment + BigInt(Math.ceil(installmentAmount)))
+    const roi = (+copy.toString() / upfrontPayment) * 100
+    interestCost = -(totalPayment + Math.ceil(installmentAmount))
 
-    const totalElectricityCostWithoutSolar = calculateTotalElectricityCostWithoutSolar(
-      calculatedMonthlyConsumption,
-      electricityType,
-      monthlyElectricityCostWithVAT,
-      solarPanelLifespan,
-      VAT,
-      bacDienSinhHoat,
-      giaKinhDoanh
-    );
+    const totalElectricityCostWithoutSolar =
+      calculateTotalElectricityCostWithoutSolar(
+        calculatedMonthlyConsumption,
+        electricityType,
+        monthlyElectricityCostWithVAT,
+        solarPanelLifespan,
+        VAT,
+        bacDienSinhHoat,
+        giaKinhDoanh
+      )
     return {
       // Monthly values
       monthlyElectricityCost,
@@ -329,7 +448,7 @@ export default function FinancialAnalysisPage() {
       totalInvestment,
       installmentAmount,
       upfrontPayment,
-      monthlyPayment: Math.abs(+monthlyPayment[0].toString()), // Ensure positive value for display
+      monthlyPayment: Math.abs(+monthlyPayment[0]), // Ensure positive value for display
       totalPayment,
       interestCost,
 
@@ -383,9 +502,10 @@ export default function FinancialAnalysisPage() {
               <CardTitle>1. Thông Tin Sử Dụng & Hệ Thống</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
+
               <div>
-                <Label className="text-sm font-medium">Loại điện</Label>
-                <div className="flex space-x-4 mt-1">
+                <Label className="text-sm font-medium">Giá điện</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
                   <div className="flex items-center">
                     <input
                       type="radio"
@@ -396,22 +516,50 @@ export default function FinancialAnalysisPage() {
                       onChange={() => setElectricityType("sinh-hoat")}
                       className="mr-2"
                     />
-                    <Label htmlFor="sinh-hoat" className="cursor-pointer">
+                    <Label htmlFor="sinh-hoat" className="cursor-pointer text-sm">
                       Sinh hoạt
                     </Label>
                   </div>
                   <div className="flex items-center">
                     <input
                       type="radio"
-                      id="kinh-doanh"
+                      id="kinh-doanh-duoi-6kv"
                       name="electricity-type"
-                      value="kinh-doanh"
-                      checked={electricityType === "kinh-doanh"}
-                      onChange={() => setElectricityType("kinh-doanh")}
+                      value="kinh-doanh-duoi-6kv"
+                      checked={electricityType === "kinh-doanh-duoi-6kv"}
+                      onChange={() => setElectricityType("kinh-doanh-duoi-6kv")}
                       className="mr-2"
                     />
-                    <Label htmlFor="kinh-doanh" className="cursor-pointer">
-                      Kinh doanh
+                    <Label htmlFor="kinh-doanh-duoi-6kv" className="cursor-pointer text-sm">
+                      Kinh doanh dưới 6kV
+                    </Label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      id="kinh-doanh-6kv-22kv"
+                      name="electricity-type"
+                      value="kinh-doanh-6kv-22kv"
+                      checked={electricityType === "kinh-doanh-6kv-22kv"}
+                      onChange={() => setElectricityType("kinh-doanh-6kv-22kv")}
+                      className="mr-2"
+                    />
+                    <Label htmlFor="kinh-doanh-6kv-22kv" className="cursor-pointer text-sm">
+                      Kinh doanh từ 6kV đến 22kV
+                    </Label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      id="kinh-doanh-tren-22kv"
+                      name="electricity-type"
+                      value="kinh-doanh-tren-22kv"
+                      checked={electricityType === "kinh-doanh-tren-22kv"}
+                      onChange={() => setElectricityType("kinh-doanh-tren-22kv")}
+                      className="mr-2"
+                    />
+                    <Label htmlFor="kinh-doanh-tren-22kv" className="cursor-pointer text-sm">
+                      Kinh doanh từ 22kV trở lên
                     </Label>
                   </div>
                 </div>
@@ -426,7 +574,7 @@ export default function FinancialAnalysisPage() {
                     id="monthly-consumption"
                     type="number"
                     value={monthlyConsumption}
-                    onChange={(e) => setMonthlyConsumption(Number(e.target.value))}
+                    onChange={(e) => setMonthlyConsumption(Number(e.target.value).toString())}
                     className="mt-1"
                   />
                   <span className="ml-2">kWh</span>
@@ -458,6 +606,16 @@ export default function FinancialAnalysisPage() {
               </div>
 
               <div className="pt-4 border-t border-gray-200">
+                {location && (
+                  <div className="mb-4">
+                    <Label className="text-sm font-medium">Vị trí lắp đặt</Label>
+                    <div className="mt-1 p-2 bg-blue-50 rounded-md">
+                      <p className="font-medium">{location}</p>
+                      <p className="text-xs text-gray-600">Số giờ nắng: {sunHoursPerDay} giờ/ngày</p>
+                    </div>
+                  </div>
+                )}
+                
                 <Label htmlFor="system-capacity" className="text-sm font-medium">
                   Công suất hệ thống
                 </Label>
@@ -466,12 +624,16 @@ export default function FinancialAnalysisPage() {
                     id="system-capacity"
                     type="number"
                     value={systemCapacity}
-                    onChange={(e) => setSystemCapacity(Number(e.target.value))}
+                    disabled
+                    // onChange={(e) => setSystemCapacity(Number(e.target.value))}
                     className="mt-1"
                     step="0.1"
                   />
                   <span className="ml-2">kWp</span>
                 </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Công suất được tính tự động dựa trên mức tiêu thụ điện và số giờ nắng tại {location || "khu vực của bạn"}
+                </p>
               </div>
 
               <div>
@@ -523,7 +685,7 @@ export default function FinancialAnalysisPage() {
 
                   <div className="text-gray-600">Tỷ lệ tiết kiệm:</div>
                   <div className="font-medium text-right">
-                    {Math.round((calculations.monthlySolarSavings / monthlyConsumption) * 100)}%
+                    {Math.round((calculations.monthlySolarSavings / +monthlyConsumption) * 100)}%
                   </div>
                 </div>
               </div>
@@ -545,12 +707,13 @@ export default function FinancialAnalysisPage() {
                     id="installment-rate"
                     value={[installmentRate]}
                     onValueChange={(values) => setInstallmentRate(values[0])}
+                    min={10}
                     max={100}
                     step={10}
                     className="my-4"
                   />
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">0%</span>
+                    <span className="text-sm text-gray-500">10%</span>
                     <span className="inline-block bg-yellow-100 text-yellow-700 font-medium px-2 py-1 rounded-md">
                       {installmentRate}%
                     </span>
@@ -582,8 +745,7 @@ export default function FinancialAnalysisPage() {
                   </div>
                 </div>
               </div>
-
-              <div>
+             <div>
                 <Label htmlFor="interest-rate" className="text-sm font-medium">
                   Lãi suất năm
                 </Label>
@@ -592,26 +754,13 @@ export default function FinancialAnalysisPage() {
                     id="interest-rate"
                     type="number"
                     value={interestRate}
-                    onChange={(e) => {
-                      const value = Number(e.target.value);
-                      // Validate interest rate is between 0 and 100
-                      if (value > 0 && value < 100) {
-                        setInterestRate(value);
-                      } else if (value <= 0) {
-                        setInterestRate(0.01); // Minimum value
-                      } else if (value >= 100) {
-                        setInterestRate(99.99); // Maximum value
-                      }
-                    }}
+                    disabled
                     className="mt-1"
-                    step="0.01"
-                    min="0.01"
-                    max="99.99"
                   />
                   <span className="ml-2">%</span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Lãi suất phải lớn hơn 0% và nhỏ hơn 100%
+                  Lãi suất được tính tự động theo thời hạn trả chậm
                 </p>
               </div>
 

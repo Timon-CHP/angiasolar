@@ -1,3 +1,4 @@
+
 "use client"
 
 import { Button } from "@/components/ui/button"
@@ -9,48 +10,107 @@ import { Slider } from "@/components/ui/slider"
 import {
   bacDienSinhHoat,
   calculateIRR,
-  formatNumber,
+  calculateSystemCapacity,
   giaKinhDoanh,
+  provincesSolarData,
   tinhSanLuongDien,
   tinhSanLuongTietKiem,
   tinhSanLuongTieuThu,
   tinhSoDienTuTienDien,
   tinhTienDienKinhDoanh,
-  tinhTienDienSinhHoat
+  tinhTienDienSinhHoat,
+  VAT
 } from "@/lib/calculations"
 import { Home } from "lucide-react"
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
 
 export default function EfficiencyAnalysisPage() {
+    const searchParams = useSearchParams()
+    // Get parameters from URL
+  const locationParam = searchParams.get('location') || ""
+  const usageTimeParam = searchParams.get('usageTime') || "90"
+  const electricityCostParam = searchParams.get('monthlyUsage') || "1948508"
+  const electricityTypeParam = searchParams.get('electricityType') || "sinh-hoat"
+
+    // State for basic information
+  const [location, setLocation] = useState(locationParam)
+  const [electricityType, setElectricityType] = useState(electricityTypeParam)
+  const [electricityCost, setElectricityCost] = useState(electricityCostParam)
+  useEffect(() => {
+    setElectricityCost(Math.ceil(+electricityCostParam).toString())
+  }, [electricityCostParam])
+  const [dayTimeUsagePercent, setDayTimeUsagePercent] = useState(parseInt(usageTimeParam, 10) || 90)
+
+  // Find province data based on location
+  const provinceData = useMemo(() => {
+    return provincesSolarData.find(p => p.name === location) || 
+           { name: "", production: 0, sunHours: 5 } // Default values if not found
+  }, [location])
+  
   // No need to define electricity pricing tiers here anymore
 
-  // State for basic information
-  const [electricityType, setElectricityType] = useState("sinh-hoat")
+  // const [monthlyConsumption, setMonthlyConsumption] = useState(350) // kWh/month
+    // Calculate monthly consumption from electricity cost
+  const monthlyConsumption = useMemo(() => {
+    console.log(Number(Math.ceil(+electricityCost/(1+VAT))))
+    return tinhSoDienTuTienDien(
+      Number(Math.ceil(+electricityCost/(1+VAT))), 
+      electricityType, 
+      bacDienSinhHoat, 
+    )
+  }, [electricityCost, electricityType])
+  // const [electricityCost, setElectricityCost] = useState("1948508")
+  // const [dayTimeUsagePercent, setDayTimeUsagePercent] = useState(90)
 
-  const [monthlyConsumption, setMonthlyConsumption] = useState(350) // kWh/month
-  const [electricityCost, setElectricityCost] = useState("1948508")
-  const [dayTimeUsagePercent, setDayTimeUsagePercent] = useState(90)
+  
+  // Use sunHours from province data
+  const [sunHoursPerDay, setSunHoursPerDay] = useState(provinceData.sunHours || 5)
+    // Update sunHours when location changes
+  useEffect(() => {
+    if (provinceData.sunHours) {
+      setSunHoursPerDay(provinceData.sunHours)
+    }
+  }, [provinceData])
+  
+  const [productionPerLocation, setProductionPerLocation] = useState(provinceData.production || 0) // kWh/kWp
+    // Update sunHours when location changes
+  useEffect(() => {
+    if (provinceData.production) {
+      setProductionPerLocation(provinceData.production)
+    }
+  }, [provinceData])
 
+  const [safetyRatio, setSafetyRatio] = useState(90)
+  
   // System parameters
-  const [systemCapacity, setSystemCapacity] = useState(4.78) // Fixed value
-  const [safetyRatio, setSafetyRatio] = useState(100)
+  // const [systemCapacity, setSystemCapacity] = useState(4.78) // Fixed value
+  // Calculate system capacity dynamically
+  const [systemCapacity, setSystemCapacity] = useState(() => 
+    calculateSystemCapacity(
+      monthlyConsumption, 
+      dayTimeUsagePercent, 
+      productionPerLocation, 
+      safetyRatio
+    )
+  )
   const [batteryOption, setBatteryOption] = useState("Không lắp")
   const [systemEfficiency, setSystemEfficiency] = useState(100) // 85% efficiency
-  const [sunHoursPerDay, setSunHoursPerDay] = useState(5) // Average sun hours per day
+
+  // const [sunHoursPerDay, setSunHoursPerDay] = useState(5) // Average sun hours per day
   const [costPerKWp, setCostPerKWp] = useState(10_000_000) // Default 10,000,000 VND/kWp
   const [currentYear, setCurrentYear] = useState(0) // Year 0 is the first year of installation
 
   // Constants for calculations
   const batteryDepreciationRate = 0.7 // 0.7% battery depreciation per year
   const maintenanceCostPerKWp = 300_000 // 300,000 VND/kWp for operation and maintenance
-  const VAT = 0.08 // 8% VAT on electricity and investment
   const solarPanelLifespan = 20 // Solar panel lifespan in years
 
   // Calculate investment efficiency
   const calculations = useMemo(() => {
     // Initial investment cost before VAT
-    const initialInvestmentBeforeVAT = systemCapacity * costPerKWp * (safetyRatio / 100)
+    const initialInvestmentBeforeVAT = systemCapacity * costPerKWp
 
     // Initial investment cost with VAT
     const initialInvestment = initialInvestmentBeforeVAT * (1 + VAT)
@@ -82,7 +142,7 @@ export default function EfficiencyAnalysisPage() {
     const monthlySolarConsumption = tinhSanLuongTieuThu(monthlySolarProduction, dayTimeUsagePercent)
 
     // Calculate energy saved by solar
-    const calculatedMonthlyConsumption = tinhSoDienTuTienDien(Number(electricityCost), electricityType, bacDienSinhHoat, giaKinhDoanh)
+    const calculatedMonthlyConsumption = tinhSoDienTuTienDien(Number(electricityCost), electricityType, bacDienSinhHoat)
     const monthlySolarSavings = tinhSanLuongTietKiem(calculatedMonthlyConsumption, monthlySolarConsumption)
 
     // Calculate remaining grid consumption
@@ -256,7 +316,7 @@ export default function EfficiencyAnalysisPage() {
             <CardContent className="pt-6 space-y-4">
               <div>
                 <Label htmlFor="electricity-cost" className="text-sm font-medium">
-                  Tiền điện chưa VAT
+                  Tiền điện (Đã bao gồm VAT)
                 </Label>
                 <Input
                   id="electricity-cost"
@@ -269,7 +329,7 @@ export default function EfficiencyAnalysisPage() {
 
               <div>
                 <Label className="text-sm font-medium">Giá điện</Label>
-                <div className="flex space-x-4 mt-1">
+                <div className="grid grid-cols-2 gap-2 mt-1">
                   <div className="flex items-center">
                     <input
                       type="radio"
@@ -280,22 +340,50 @@ export default function EfficiencyAnalysisPage() {
                       onChange={() => setElectricityType("sinh-hoat")}
                       className="mr-2"
                     />
-                    <Label htmlFor="sinh-hoat" className="cursor-pointer">
+                    <Label htmlFor="sinh-hoat" className="cursor-pointer text-sm">
                       Sinh hoạt
                     </Label>
                   </div>
                   <div className="flex items-center">
                     <input
                       type="radio"
-                      id="kinh-doanh"
+                      id="kinh-doanh-duoi-6kv"
                       name="electricity-type"
-                      value="kinh-doanh"
-                      checked={electricityType === "kinh-doanh"}
-                      onChange={() => setElectricityType("kinh-doanh")}
+                      value="kinh-doanh-duoi-6kv"
+                      checked={electricityType === "kinh-doanh-duoi-6kv"}
+                      onChange={() => setElectricityType("kinh-doanh-duoi-6kv")}
                       className="mr-2"
                     />
-                    <Label htmlFor="kinh-doanh" className="cursor-pointer">
-                      Kinh doanh
+                    <Label htmlFor="kinh-doanh-duoi-6kv" className="cursor-pointer text-sm">
+                      Kinh doanh dưới 6kV
+                    </Label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      id="kinh-doanh-6kv-22kv"
+                      name="electricity-type"
+                      value="kinh-doanh-6kv-22kv"
+                      checked={electricityType === "kinh-doanh-6kv-22kv"}
+                      onChange={() => setElectricityType("kinh-doanh-6kv-22kv")}
+                      className="mr-2"
+                    />
+                    <Label htmlFor="kinh-doanh-6kv-22kv" className="cursor-pointer text-sm">
+                      Kinh doanh từ 6kV đến 22kV
+                    </Label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      id="kinh-doanh-tren-22kv"
+                      name="electricity-type"
+                      value="kinh-doanh-tren-22kv"
+                      checked={electricityType === "kinh-doanh-tren-22kv"}
+                      onChange={() => setElectricityType("kinh-doanh-tren-22kv")}
+                      className="mr-2"
+                    />
+                    <Label htmlFor="kinh-doanh-tren-22kv" className="cursor-pointer text-sm">
+                      Kinh doanh từ 22kV trở lên
                     </Label>
                   </div>
                 </div>
@@ -308,7 +396,7 @@ export default function EfficiencyAnalysisPage() {
                 <div className="flex items-center">
                   <Input
                     id="monthly-consumption"
-                    value={tinhSoDienTuTienDien(Number(electricityCost), electricityType, bacDienSinhHoat, giaKinhDoanh)}
+                    value={tinhSoDienTuTienDien(Number((Math.ceil(+electricityCost/(1+ VAT)))), electricityType, bacDienSinhHoat)}
                     disabled
                     className="mt-1 bg-gray-100"
                   />
@@ -413,26 +501,26 @@ export default function EfficiencyAnalysisPage() {
                     <Input
                       id="safety-ratio"
                       type="number"
-                      min="1"
-                      max="100"
-                      value={safetyRatio}
-                      onChange={(e) => setSafetyRatio(Number(e.target.value))}
-                      className="mt-1"
+                      value={90}
+                      disabled
+                      className="mt-1 bg-gray-100"
                     />
                     <span className="ml-2">%</span>
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">Tỷ lệ an toàn được cố định ở mức 90%</p>
                 </div>
               </div>
 
               <div>
                 <Label htmlFor="cost-per-kwp" className="text-sm font-medium">
-                  Chi phí đầu tư
+                  Chi phí đầu tư (Chưa bao gồm VAT)
                 </Label>
                 <div className="flex items-center mt-1">
                   <Input
                     id="cost-per-kwp"
                     type="number"
                     value={costPerKWp}
+                    disabled
                     onChange={(e) => setCostPerKWp(Number(e.target.value))}
                     className="mt-1"
                     step="100000"
@@ -511,7 +599,7 @@ export default function EfficiencyAnalysisPage() {
                   <Label className="text-sm font-medium text-blue-800">Chi phí điện hiện tại mỗi tháng</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={formatNumber(Number(electricityCost) * (1 + VAT))}
+                      value={formatNumber(Number(electricityCost))}
                       disabled
                       className="bg-white font-bold text-blue-700 border-blue-200"
                     />
@@ -619,14 +707,16 @@ export default function EfficiencyAnalysisPage() {
             Yêu cầu kỹ thuật viên tới khảo sát chi tiết và lắp đặt ngay hôm nay
           </Button>
 
-          <Link href="/phan-tich-tai-chinh">
-            <Button
-              variant="outline"
-              className="w-full border-amber-600 text-amber-600 hover:bg-amber-50 py-6 px-8 text-lg font-bold rounded-lg transform transition-transform duration-300 hover:scale-105 active:scale-95"
-            >
-              Xem thêm phương án trả chậm
-            </Button>
-          </Link>
+          <Link 
+            href={`/phan-tich-tai-chinh?location=${encodeURIComponent(location)}&usageTime=${dayTimeUsagePercent}&monthlyUsage=${electricityCost}&electricityType=${electricityType}&systemCapacity=${systemCapacity}&monthlyConsumption=${monthlyConsumption}`}
+                    >
+                      <Button
+                        variant="outline"
+                        className="w-full border-amber-600 text-amber-600 hover:bg-amber-50 py-6 px-8 text-lg font-bold rounded-lg transform transition-transform duration-300 hover:scale-105 active:scale-95"
+                      >
+                        Xem thêm phương án trả chậm
+                      </Button>
+                    </Link>
 
           <Link href="/ho-so">
             <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 px-8 text-lg font-bold rounded-lg transform transition-transform duration-300 hover:scale-105 active:scale-95">
