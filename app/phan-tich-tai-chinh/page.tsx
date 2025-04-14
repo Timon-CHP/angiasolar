@@ -36,6 +36,35 @@ const INTEREST_RATES = {
   7: 16.00  // 16% for 7 years
 };
 
+// Function to calculate total electricity cost over the system lifespan without solar panels
+function calculateTotalElectricityCostWithoutSolar(
+  monthlyConsumption: number,
+  electricityType: string,
+  monthlyElectricityCostWithVAT: number,
+  solarPanelLifespan: number,
+  VAT: number,
+  bacDienSinhHoat: any,
+  giaKinhDoanh: any
+) {
+  let totalCost = 0;
+  
+  for (let year = 0; year < solarPanelLifespan; year++) {
+    // Apply annual electrical price increase (4% per year)
+    const priceIncreaseFactor = Math.pow(1 + 0.04, year);
+    
+    // Calculate original electricity cost with price increase for this year
+    const yearlyElectricityCostWithIncrease = monthlyElectricityCostWithVAT * 12 * priceIncreaseFactor;
+    
+    // Add to total cost
+    totalCost += yearlyElectricityCostWithIncrease;
+    
+    console.log(`Debug - Year ${year} without solar: Electricity Cost = ${yearlyElectricityCostWithIncrease.toFixed(0)} VND`);
+  }
+  
+  return totalCost;
+}
+
+
 // Function to calculate monthly payment (PMT formula)
 function calculatePMT(rate, nper, pv, fv = 0, type = 0) {
   // rate: interest rate per period
@@ -137,10 +166,6 @@ export default function FinancialAnalysisPage() {
   const [electricityType, setElectricityType] = useState(electricityTypeParam)
   const [electricityCost, setElectricityCost] = useState(electricityCostParam) // Optional direct input of electricity cost
 
-
-  // Use a single state for daytime usage
-  const dayTimeUsagePercent = daytimeUsagePercent
-
   // Installment options
   const [installmentRate, setInstallmentRate] = useState(90) // % of total investment to be financed
 
@@ -222,7 +247,6 @@ export default function FinancialAnalysisPage() {
     // Calculate solar consumption (based on daytime usage)
     const monthlySolarConsumption = tinhSanLuongTieuThu(
       monthlySolarProduction,
-      dayTimeUsagePercent
     )
 
     // Calculate energy saved by solar
@@ -481,6 +505,7 @@ export default function FinancialAnalysisPage() {
   const [option, setOption] = useState("Option 1")
 
   return (
+    // You could have a loading skeleton as the `fallback` too
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="container mx-auto px-4">
         {/* Home button */}
@@ -494,6 +519,46 @@ export default function FinancialAnalysisPage() {
         </div>
 
         <h1 className="text-3xl font-bold text-center mb-8 text-red-600">Phân Tích Tài Chính Đầu Tư Điện Mặt Trời</h1>
+          <Card className="mt-8 mb-8">
+            <CardHeader className="bg-green-600 text-white rounded-t-lg">
+              <CardTitle>Tổng Kết Tiết Kiệm Trong Vòng Đời Hệ Thống ({solarPanelLifespan} năm)</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-blue-800 mb-2">Trong thời gian trả góp ({installmentTerm} năm)</h3>
+                  <div className="text-2xl font-bold text-blue-700">
+                    {formatNegativeNumber(+calculations.savingsDuringLoanTerm.toString())} VND
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {calculations.savingsDuringLoanTerm >= 0
+                      ? "Tiết kiệm ngay từ đầu"
+                      : "Chi phí nhiều hơn tiết kiệm"}
+                  </p>
+                </div>
+
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-green-800 mb-2">Sau khi trả hết nợ ({solarPanelLifespan - installmentTerm} năm)</h3>
+                  <div className="text-2xl font-bold text-green-700">
+                    {formatNumber(+calculations.savingsAfterLoanTerm.toString())} VND
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Trung bình {formatNumber(+calculations.savingsAfterLoanTerm.toString() / (solarPanelLifespan - installmentTerm))} VND/năm
+                  </p>
+                </div>
+
+                <div className="bg-amber-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-amber-800 mb-2">Tổng tiết kiệm ({solarPanelLifespan} năm)</h3>
+                  <div className="text-2xl font-bold text-amber-700">
+                    {formatNumber(+calculations.lifetimeSavings.toString())} VND
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ROI: {formatNumber(+calculations.roi.toString())}% | Thu hồi vốn: {calculations.paybackPeriod} năm
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Customer Usage and System Information Card */}
@@ -939,46 +1004,6 @@ export default function FinancialAnalysisPage() {
             </Button>
           </Link>
         </div>
-          <Card className="mt-8">
-            <CardHeader className="bg-green-600 text-white rounded-t-lg">
-              <CardTitle>Tổng Kết Tiết Kiệm Trong Vòng Đời Hệ Thống ({solarPanelLifespan} năm)</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-blue-800 mb-2">Trong thời gian trả góp ({installmentTerm} năm)</h3>
-                  <div className="text-2xl font-bold text-blue-700">
-                    {formatNegativeNumber(+calculations.savingsDuringLoanTerm.toString())} VND
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {calculations.savingsDuringLoanTerm >= 0
-                      ? "Tiết kiệm ngay từ đầu"
-                      : "Chi phí nhiều hơn tiết kiệm"}
-                  </p>
-                </div>
-
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-green-800 mb-2">Sau khi trả hết nợ ({solarPanelLifespan - installmentTerm} năm)</h3>
-                  <div className="text-2xl font-bold text-green-700">
-                    {formatNumber(+calculations.savingsAfterLoanTerm.toString())} VND
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Trung bình {formatNumber(+calculations.savingsAfterLoanTerm.toString() / (solarPanelLifespan - installmentTerm))} VND/năm
-                  </p>
-                </div>
-
-                <div className="bg-amber-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-amber-800 mb-2">Tổng tiết kiệm ({solarPanelLifespan} năm)</h3>
-                  <div className="text-2xl font-bold text-amber-700">
-                    {formatNumber(+calculations.lifetimeSavings.toString())} VND
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    ROI: {formatNumber(+calculations.roi.toString())}% | Thu hồi vốn: {calculations.paybackPeriod} năm
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
 
         {/* Navigation links */}
@@ -993,32 +1018,3 @@ export default function FinancialAnalysisPage() {
     </div>
   )
 }
-
-// Function to calculate total electricity cost over the system lifespan without solar panels
-function calculateTotalElectricityCostWithoutSolar(
-  monthlyConsumption: number,
-  electricityType: string,
-  monthlyElectricityCostWithVAT: number,
-  solarPanelLifespan: number,
-  VAT: number,
-  bacDienSinhHoat: any,
-  giaKinhDoanh: any
-) {
-  let totalCost = 0;
-  
-  for (let year = 0; year < solarPanelLifespan; year++) {
-    // Apply annual electrical price increase (4% per year)
-    const priceIncreaseFactor = Math.pow(1 + 0.04, year);
-    
-    // Calculate original electricity cost with price increase for this year
-    const yearlyElectricityCostWithIncrease = monthlyElectricityCostWithVAT * 12 * priceIncreaseFactor;
-    
-    // Add to total cost
-    totalCost += yearlyElectricityCostWithIncrease;
-    
-    console.log(`Debug - Year ${year} without solar: Electricity Cost = ${yearlyElectricityCostWithIncrease.toFixed(0)} VND`);
-  }
-  
-  return totalCost;
-}
-

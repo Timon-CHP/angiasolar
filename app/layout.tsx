@@ -1,7 +1,7 @@
-import type React from "react"
-import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
+import type React from "react"
+import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -18,11 +18,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}><Suspense>{children}</Suspense></body>
     </html>
   )
 }
 
 
 
+import { Suspense } from "react"
 import './globals.css'
+

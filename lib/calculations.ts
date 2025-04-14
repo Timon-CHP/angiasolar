@@ -50,7 +50,7 @@ export function tinhSanLuongDien(capacity: number, sunHours: number, efficiency:
   return baseProduction
 }
 
-export function tinhSanLuongTieuThu(sanLuongSanXuat: number, tyLeTieuThu: number): number {
+export function tinhSanLuongTieuThu(sanLuongSanXuat: number, tyLeTieuThu: number = 100): number {
   return sanLuongSanXuat * (tyLeTieuThu / 100)
 }
 

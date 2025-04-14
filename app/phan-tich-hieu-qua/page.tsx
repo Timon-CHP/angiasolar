@@ -54,7 +54,6 @@ export default function EfficiencyAnalysisPage() {
   // const [monthlyConsumption, setMonthlyConsumption] = useState(350) // kWh/month
     // Calculate monthly consumption from electricity cost
   const monthlyConsumption = useMemo(() => {
-    console.log(Number(Math.ceil(+electricityCost/(1+VAT))))
     return tinhSoDienTuTienDien(
       Number(Math.ceil(+electricityCost/(1+VAT))), 
       electricityType, 
@@ -139,7 +138,7 @@ export default function EfficiencyAnalysisPage() {
     const monthlySolarProduction = tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency)
 
     // Calculate solar consumption (based on daytime usage)
-    const monthlySolarConsumption = tinhSanLuongTieuThu(monthlySolarProduction, dayTimeUsagePercent)
+    const monthlySolarConsumption = tinhSanLuongTieuThu(monthlySolarProduction)
 
     // Calculate energy saved by solar
     const calculatedMonthlyConsumption = tinhSoDienTuTienDien(Number(electricityCost), electricityType, bacDienSinhHoat)
@@ -176,7 +175,7 @@ export default function EfficiencyAnalysisPage() {
     for (let year = 0; year < solarPanelLifespan; year++) {
       // Calculate production for this specific year with degradation
       const yearlyProduction = tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, year)
-      const yearlyConsumption = tinhSanLuongTieuThu(yearlyProduction, dayTimeUsagePercent)
+      const yearlyConsumption = tinhSanLuongTieuThu(yearlyProduction,)
       const yearlySavings = tinhSanLuongTietKiem(calculatedMonthlyConsumption, yearlyConsumption)
 
       // Calculate remaining consumption for this year
