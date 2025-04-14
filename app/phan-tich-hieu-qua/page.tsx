@@ -135,7 +135,7 @@ export default function EfficiencyAnalysisPage() {
     const monthlyElectricityCostWithVAT = monthlyElectricityCost * (1 + VAT)
 
     // Calculate solar production
-    const monthlySolarProduction = tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency)
+    const monthlySolarProduction = tinhSanLuongDien(systemCapacity, productionPerLocation, systemEfficiency)
 
     // Calculate solar consumption (based on daytime usage)
     const monthlySolarConsumption = tinhSanLuongTieuThu(monthlySolarProduction)
@@ -174,7 +174,7 @@ export default function EfficiencyAnalysisPage() {
 
     for (let year = 0; year < solarPanelLifespan; year++) {
       // Calculate production for this specific year with degradation
-      const yearlyProduction = tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, year)
+      const yearlyProduction = tinhSanLuongDien(systemCapacity, productionPerLocation, systemEfficiency, year)
       const yearlyConsumption = tinhSanLuongTieuThu(yearlyProduction,)
       const yearlySavings = tinhSanLuongTietKiem(calculatedMonthlyConsumption, yearlyConsumption)
 
@@ -447,7 +447,7 @@ export default function EfficiencyAnalysisPage() {
                     <Label className="text-xs text-blue-700">Tháng đầu tiên</Label>
                     <div className="flex items-center mt-1">
                       <Input
-                        value={Math.round(tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, 0))}
+                        value={Math.round(tinhSanLuongDien(systemCapacity, productionPerLocation, systemEfficiency, 0))}
                         disabled
                         className="bg-white border-blue-200"
                       />
@@ -458,7 +458,7 @@ export default function EfficiencyAnalysisPage() {
                     <Label className="text-xs text-blue-700">Tháng thứ 2</Label>
                     <div className="flex items-center mt-1">
                       <Input
-                        value={Math.round(tinhSanLuongDien(systemCapacity, sunHoursPerDay, systemEfficiency, 1/12))}
+                        value={Math.round(tinhSanLuongDien(systemCapacity, productionPerLocation, systemEfficiency, 1/12))}
                         disabled
                         className="bg-white border-blue-200"
                       />

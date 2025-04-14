@@ -146,11 +146,11 @@ export default function FinancialAnalysisPage() {
     const newCapacity = calculateSystemCapacity(
       +monthlyConsumption,
       daytimeUsagePercent,
-      sunHoursPerDay,
+      productionPerLocation,
       safetyRatio
     )
     // setSystemCapacity(newCapacity)
-  }, [monthlyConsumption, daytimeUsagePercent, sunHoursPerDay, safetyRatio])
+  }, [monthlyConsumption, daytimeUsagePercent, productionPerLocation, safetyRatio])
   
   // Update sunHours when location changes
   useEffect(() => {
@@ -240,7 +240,7 @@ export default function FinancialAnalysisPage() {
     // Calculate solar production
     const monthlySolarProduction = tinhSanLuongDien(
       systemCapacity,
-      sunHoursPerDay,
+      productionPerLocation,
       systemEfficiency
     )
 

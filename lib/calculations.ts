@@ -34,9 +34,9 @@ export function tinhTienDienKinhDoanh(x: number, giaKinhDoanh: any[], type: stri
   return x * pricing.gia;
 }
 
-export function tinhSanLuongDien(capacity: number, sunHours: number, efficiency: number, years: number = 0): number {
+export function tinhSanLuongDien(capacity: number, production: number, efficiency: number, years: number = 0): number {
   // Calculate base production using standard yield of 1380 kWh/kWp/year
-  const annualProduction = 1380 * capacity * (efficiency/100)
+  const annualProduction = production * capacity * (efficiency/100)
   // Convert to monthly production
   const baseProduction = annualProduction / 12
   
