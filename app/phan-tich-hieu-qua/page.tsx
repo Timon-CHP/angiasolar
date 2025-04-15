@@ -115,7 +115,8 @@ export default function EfficiencyAnalysisPage() {
     const initialInvestment = initialInvestmentBeforeVAT * (1 + VAT)
 
     // Annual maintenance cost
-    const annualMaintenanceCost = systemCapacity * maintenanceCostPerKWp
+    const annualMaintenanceCost = systemCapacity * maintenanceCostPerKWp * (1 + VAT)
+    console.log('annualMaintenanceCost', annualMaintenanceCost)
 
     // Total investment is initial investment only (maintenance costs are annual)
     const totalInvestment = initialInvestment
@@ -132,7 +133,7 @@ export default function EfficiencyAnalysisPage() {
     }
 
     // Apply VAT
-    const monthlyElectricityCostWithVAT = monthlyElectricityCost * (1 + VAT)
+    const monthlyElectricityCostWithVAT = monthlyElectricityCost
 
     // Calculate solar production
     const monthlySolarProduction = tinhSanLuongDien(systemCapacity, productionPerLocation, systemEfficiency)
@@ -141,7 +142,7 @@ export default function EfficiencyAnalysisPage() {
     const monthlySolarConsumption = tinhSanLuongTieuThu(monthlySolarProduction)
 
     // Calculate energy saved by solar
-    const calculatedMonthlyConsumption = tinhSoDienTuTienDien(Number(electricityCost), electricityType, bacDienSinhHoat)
+    const calculatedMonthlyConsumption = tinhSoDienTuTienDien(Number(+electricityCost / (1 + VAT)), electricityType, bacDienSinhHoat)
     const monthlySolarSavings = tinhSanLuongTietKiem(calculatedMonthlyConsumption, monthlySolarConsumption)
 
     // Calculate remaining grid consumption
@@ -149,6 +150,8 @@ export default function EfficiencyAnalysisPage() {
 
     // Calculate new electricity bill
     let newMonthlyElectricityCost = 0
+
+    console.log(electricityType, remainingGridConsumption)
     if (electricityType === "sinh-hoat") {
       newMonthlyElectricityCost = tinhTienDienSinhHoat(remainingGridConsumption, bacDienSinhHoat)
     } else {
@@ -160,9 +163,10 @@ export default function EfficiencyAnalysisPage() {
 
     // Calculate monthly savings
     const monthlySavings = monthlyElectricityCostWithVAT - newMonthlyElectricityCostWithVAT
+    console.log(monthlyElectricityCostWithVAT, newMonthlyElectricityCostWithVAT)
 
     // Calculate annual savings
-    const annualSavings = monthlySavings * 12
+    let annualSavings = monthlySavings * 12
 
     // Calculate solar panel lifespan savings with degradation and price increase
     let totalSavings = 0
@@ -193,8 +197,7 @@ export default function EfficiencyAnalysisPage() {
       const priceIncreaseFactor = Math.pow(1 + 0.04, year)
 
       // Calculate original electricity cost with price increase
-      const originalElectricityCostWithIncrease = monthlyElectricityCost * priceIncreaseFactor
-      const originalElectricityCostWithIncreaseAndVAT = originalElectricityCostWithIncrease * (1 + VAT)
+      const originalElectricityCostWithIncreaseAndVAT = monthlyElectricityCost * priceIncreaseFactor
 
       // Apply the same price increase to the new electricity cost
       yearlyElectricityCost *= priceIncreaseFactor
@@ -205,6 +208,10 @@ export default function EfficiencyAnalysisPage() {
 
       // Subtract annual maintenance cost from the yearly savings
       const yearlyTotalSavings = (yearlyMonthlySavings * 12) - annualMaintenanceCost
+      if (year == 0) {
+        console.log('yearlyTotalSavings', yearlyMonthlySavings * 12,  yearlyTotalSavings)
+        annualSavings = yearlyTotalSavings
+      }
       totalSavings += yearlyTotalSavings
 
       // Store yearly savings for payback calculation
@@ -217,6 +224,8 @@ export default function EfficiencyAnalysisPage() {
       )
     }
 
+
+    console.log('cashFlows', cashFlows)
     const irrCal = calculateIRR(cashFlows)
 
     // Calculate ROI more accurately
@@ -631,7 +640,7 @@ export default function EfficiencyAnalysisPage() {
                 </div>
 
                 <div className="mb-3">
-                  <Label className="text-sm font-medium text-blue-800">Số tiền tiết kiệm được trong năm đầu</Label>
+                  <Label className="text-sm font-medium text-blue-800">Số tiền tiết kiệm được trong năm đầu (Đã trừ vận hành và bảo trì)</Label>
                   <div className="flex items-center mt-1">
                     <Input
                       value={formatNumber(calculations.annualSavings)}

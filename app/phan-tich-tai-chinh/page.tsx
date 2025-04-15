@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import {
   bacDienSinhHoat,
+  calculateIRR,
   calculateSystemCapacity,
   formatNegativeNumber,
   formatNumber,
@@ -28,12 +29,18 @@ import { useEffect, useMemo, useState } from "react"
 // Add this near the top of the file, after imports
 const INTEREST_RATES = {
   1: 12.00, // 12% for 1 year
-  2: 13.00, // 13% for 2 years
-  3: 14.00, // 14% for 3 years
-  4: 15.00, // 15% for 4 years
-  5: 15.00, // 15% for 5 years
-  6: 16.00, // 16% for 6 years
-  7: 16.00  // 16% for 7 years
+  2: 12.00, // 12% for 2 years
+  3: 12.00, // 13% for 3 years
+  4: 12.00, // 14% for 4 years
+  5: 12.00, // 15% for 5 years
+  6: 12.00, // 16% for 6 years
+  7: 12.00  // 16% for 7 years
+  // 2: 13.00, // 13% for 2 years
+  // 3: 14.00, // 14% for 3 years
+  // 4: 15.00, // 15% for 4 years
+  // 5: 15.00, // 15% for 5 years
+  // 6: 16.00, // 16% for 6 years
+  // 7: 16.00  // 16% for 7 years
 };
 
 // Function to calculate total electricity cost over the system lifespan without solar panels
@@ -195,7 +202,7 @@ export default function FinancialAnalysisPage() {
     }) // VND
 
     // Calculate the upfront payment (what the customer actually pays initially)
-    const upfrontPayment = totalInvestment * (1 - installmentRate / 100)
+    const upfrontPayment = Math.ceil(totalInvestment * (1 - installmentRate / 100))
 
     // Calculate installment amount (amount to be financed)
     const installmentAmount = totalInvestment * (installmentRate / 100)
@@ -252,7 +259,7 @@ export default function FinancialAnalysisPage() {
     // Calculate energy saved by solar
     const calculatedMonthlyConsumption = electricityCost
       ? tinhSoDienTuTienDien(
-          Number(electricityCost),
+          Number(+electricityCost/(1+VAT)),
           electricityType,
           bacDienSinhHoat,
         )
@@ -293,8 +300,6 @@ export default function FinancialAnalysisPage() {
     const annualCostSavings = monthlyCostSavings * 12
 
     // Calculate solar panel lifespan savings with degradation and price increase
-    let yearlySavingsArray = [] // Array to store yearly savings for payback calculation
-    let totalSavingsAfterLoanPaid = 0 // Track savings after loan is paid off
 
     // For IRR calculation, we need the initial investment as the first element (year 0)
     // and then the net cash flows for each subsequent year
@@ -315,25 +320,12 @@ export default function FinancialAnalysisPage() {
       return tongPhaiTra
     }
 
-    let currentDebt = Math.ceil(
-      tinhTongNo(installmentAmount, interestRate / 100, totalPayments)
-    )
     
     const yearlySavings: number[] = []
-    const monthlySavingAfterLoan: number[] = []
-    let monthLoanPayback = 0
     let loanPaymentLeft = totalPayments
     let interestCost = 0
     let totalSavings = 0
-    for (let year = 0; year < solarPanelLifespan; year++) {
-      const monthlyCostSavingWithPriceIncrease = 
-        Math.floor(monthlyCostSavings * Math.pow(1 + 0.04, year))
-      console.log(
-        `Debug - Year ${year}: Monthly Cost Saving with Price Increase = ${monthlyCostSavingWithPriceIncrease} VND, currentDebt = ${currentDebt} VND`
-      )
-      for (let month = 1; month <= 12; month++) {
-        if (currentDebt > 0) {
-          let monthlyLoanPayment = Math.ceil(
+    let monthlyLoanPayment = Math.ceil(
               calculatePMT(
                 monthlyInterestRate,
                 loanPaymentLeft,
@@ -342,57 +334,46 @@ export default function FinancialAnalysisPage() {
                 0
               )
             )
+
+
+    let savingsDuringLoanTerm = 0
+    let copyMonthlyLoanPayment = monthlyLoanPayment
+    let monthSaving = 0
+    let savingsAfterLoanTerm = 0 
+    let copyUpfrontPayment = upfrontPayment
+    cashFlows.push(-upfrontPayment)
+    for (let year = 0; year < solarPanelLifespan; year++) {
+      const monthlyCostSavingWithPriceIncrease = 
+        Math.floor(monthlyCostSavings * Math.pow(1 + 0.04, year))
+   
+      console.log(`Debug - Year ${year}: Debt paid off, ${monthlyCostSavingWithPriceIncrease}`)
+      if (yearlySavings[year] === undefined) yearlySavings[year] = (0)
+
+      yearlySavings[year] = monthlyCostSavingWithPriceIncrease * (12) + copyMonthlyLoanPayment * 12 - annualMaintenanceCost
+      if (savingsDuringLoanTerm == 0) {
+          savingsDuringLoanTerm = monthlyCostSavingWithPriceIncrease + copyMonthlyLoanPayment
+      }
+
+
+      if (copyUpfrontPayment > 0) {
+        for (let month = 0; month < 12; month++) {
+          const save = (monthlyCostSavingWithPriceIncrease + copyMonthlyLoanPayment) - annualMaintenanceCost/12
+          copyUpfrontPayment -= save
           
-          monthlyPayment.push(monthlyLoanPayment)
-          // console.log(`Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment.toFixed(0)} VND`)
-          const savingsAfterLoanPaid = Math.max(
-              0,
-              +(
-                monthlyCostSavingWithPriceIncrease + monthlyLoanPayment
-              ).toString()
-            )
-
-          console.log(
-            `Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`
-          )
-          if (currentDebt > -monthlyLoanPayment) {
-            currentDebt = currentDebt + monthlyLoanPayment
-            console.log(currentDebt)
-          } else {
-            monthlyLoanPayment = -monthlyLoanPayment - currentDebt
-            currentDebt = (0)
+          if (copyUpfrontPayment > 0) {
+            monthSaving++
           }
-          console.log(
-            `Debug - Year ${year}, Month ${month}: Loan Payment = ${monthlyLoanPayment} VND, Debt = ${currentDebt} VND, Savings = ${savingsAfterLoanPaid} VND, monthlyCostSavingWithPriceIncrease = ${monthlyCostSavingWithPriceIncrease} VND, monthlyLoanPayment = ${monthlyLoanPayment} VND`
-          )
-          if (yearlySavings[year] === undefined) yearlySavings[year] = (0)
-          yearlySavings[year] = yearlySavings[year] + savingsAfterLoanPaid
-
-          if (monthlySavingAfterLoan[year * 12 + month] === undefined)
-            monthlySavingAfterLoan[year * 12 + month] = savingsAfterLoanPaid
-
-          if (month == 12) {
-            cashFlows.push(yearlySavings[year])
-            const copyCurrentDebt = (currentDebt)
-            currentDebt = Math.ceil(
-                +copyCurrentDebt.toString() * (monthlyInterestRate * 12 + 1)
-              )
-            
+          if (copyUpfrontPayment <= 0) {
+            copyMonthlyLoanPayment = 0
           }
-          loanPaymentLeft--
-          monthLoanPayback++
-        } else {
-          break
-        }
+      
+        }  
+      } else {
+        savingsAfterLoanTerm += yearlySavings[year] - annualMaintenanceCost
       }
 
-      if (currentDebt <= 0) {
-        console.log(`Debug - Year ${year}: Debt paid off`)
-        if (yearlySavings[year] === undefined) yearlySavings[year] = (0)
-        yearlySavings[year] =
-          yearlySavings[year] + monthlyCostSavingWithPriceIncrease * (12)
-        cashFlows.push(yearlySavings[year])
-      }
+      cashFlows.push(yearlySavings[year])
+
 
       console.log(
         `Debug - Year ${year}: Yearly Savings = ${yearlySavings[year]} VND`
@@ -400,46 +381,19 @@ export default function FinancialAnalysisPage() {
       totalSavings = totalSavings + yearlySavings[year]
     }
 
-    let monthInterestPayback = 0
+    console.log("irr", cashFlows)
 
-    // Calculate net savings over loan term (electricity savings - total loan payments)
-    let savingsDuringLoanTerm = (0)
+    monthSaving = monthSaving / 12
 
-    let interestPayback = (0)
-    for (const i in monthlySavingAfterLoan) {
-      interestPayback = (interestPayback + monthlySavingAfterLoan[i])
-      savingsDuringLoanTerm += monthlySavingAfterLoan[i]
-      if (interestPayback >= upfrontPayment) {
-        break
-      }
-      monthInterestPayback++
-    }
-
-    const paybackPeriod = (monthInterestPayback / 12).toFixed(2)
-    console.log("-------------------------------------------")
-    console.log("Debug - monthLoanPayback:", monthLoanPayback)
-
-    // Calculate net monthly savings (monthly electricity savings - monthly loan payment)
-    const netMonthlySavings =
-      monthlyCostSavings - Math.abs(monthlyPayment[0])
-    const totalPayment = monthlyPayment.reduce(
-      (sum, payment) => sum + payment,
-      0
-    )
-
-    // Calculate savings after loan term
-    const savingsAfterLoanTermBigInt = totalSavings + totalPayment
-    const savingsAfterLoanTerm = savingsAfterLoanTermBigInt
-    console.log("-------------------------------------------")
-    console.log("Debug - savingsAfterLoanTerm:", savingsAfterLoanTerm)
-    console.log("Debug - savingsDuringLoanTerm:", savingsDuringLoanTerm)
-    // Calculate lifetime savings (20 years)
-    const lifetimeSavings = savingsDuringLoanTerm + savingsAfterLoanTermBigInt
+    const totalPayment = monthlyLoanPayment * installmentTerm * 12
+    // // Calculate savings after loan term
+    // const savingsAfterLoanTermBigInt = totalSavings + totalPayment
     const copy = totalSavings
-    console.log("Debug - lifetimeSavings:", lifetimeSavings.toString())
-    // Calculate ROI more accurately
     const roi = (+copy.toString() / upfrontPayment) * 100
-    interestCost = -(totalPayment + Math.ceil(installmentAmount))
+    interestCost = -totalPayment - installmentAmount
+
+    const irr = calculateIRR(cashFlows)
+
 
     const totalElectricityCostWithoutSolar =
       calculateTotalElectricityCostWithoutSolar(
@@ -451,8 +405,10 @@ export default function FinancialAnalysisPage() {
         bacDienSinhHoat,
         giaKinhDoanh
       )
+    const lifetimeSavings = savingsAfterLoanTerm + savingsDuringLoanTerm * installmentTerm * 12
     return {
       // Monthly values
+      monthlyLoanPayment: -monthlyLoanPayment,
       monthlyElectricityCost,
       monthlyElectricityCostWithVAT,
       monthlySolarProduction,
@@ -463,6 +419,7 @@ export default function FinancialAnalysisPage() {
       newMonthlyElectricityCostWithVAT,
       calculatedMonthlyConsumption,
       monthlyCostSavings,
+      totalPayment,
 
       // Annual and lifetime values
       annualCostSavings,
@@ -472,16 +429,17 @@ export default function FinancialAnalysisPage() {
       totalInvestment,
       installmentAmount,
       upfrontPayment,
-      monthlyPayment: Math.abs(+monthlyPayment[0]), // Ensure positive value for display
-      totalPayment,
+      // totalPayment,
       interestCost,
 
       // Performance metrics
-      netMonthlySavings,
-      paybackPeriod,
+      // netMonthlySavings,
+      // paybackPeriod,
       savingsDuringLoanTerm,
       savingsAfterLoanTerm,
       roi,
+      irr,
+      monthSaving,
 
       // Add the total electricity cost without solar to the returned object
       totalElectricityCostWithoutSolar,
@@ -528,7 +486,7 @@ export default function FinancialAnalysisPage() {
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h3 className="font-medium text-blue-800 mb-2">Trong thời gian trả góp ({installmentTerm} năm)</h3>
                   <div className="text-2xl font-bold text-blue-700">
-                    {formatNegativeNumber(+calculations.savingsDuringLoanTerm.toString())} VND
+                    {formatNegativeNumber(((+calculations.savingsDuringLoanTerm)*installmentTerm*12)).toString()} VND
                   </div>
                   <p className="text-sm text-gray-600 mt-1">
                     {calculations.savingsDuringLoanTerm >= 0
@@ -553,7 +511,7 @@ export default function FinancialAnalysisPage() {
                     {formatNumber(+calculations.lifetimeSavings.toString())} VND
                   </div>
                   <p className="text-sm text-gray-600 mt-1">
-                    ROI: {formatNumber(+calculations.roi.toString())}% | Thu hồi vốn: {calculations.paybackPeriod} năm
+                    IRR: {formatNumber(+calculations.irr.toString())}% | Thu hồi vốn: {calculations.monthSaving} năm
                   </p>
                 </div>
               </div>
@@ -857,10 +815,10 @@ export default function FinancialAnalysisPage() {
 
               <div className="bg-gray-50 p-4 rounded-lg">
                 <div className="mb-3">
-                  <Label className="text-sm font-medium text-gray-700">Chi phí trả góp tháng đầu</Label>
+                  <Label className="text-sm font-medium text-gray-700">Chi phí trả góp hàng tháng</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={formatNumber(calculations.monthlyPayment)}
+                      value={formatNumber(calculations.monthlyLoanPayment)}
                       disabled
                       className="bg-white font-bold text-gray-700 border-gray-300"
                     />
@@ -906,29 +864,29 @@ export default function FinancialAnalysisPage() {
                   </div>
                 </div>
 
-                <div>
+                 <div>
                   <Label className="text-sm font-medium text-blue-800">
                     Tiết kiệm hàng tháng (sau khi trừ trả góp)
                   </Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={formatNegativeNumber(calculations.netMonthlySavings)}
+                      value={formatNegativeNumber(calculations.savingsDuringLoanTerm)}
                       disabled
                       className={`bg-white font-bold border-blue-200 ${
-                        calculations.netMonthlySavings >= 0 ? "text-blue-700" : "text-red-500"
+                        calculations.savingsDuringLoanTerm >= 0 ? "text-blue-700" : "text-red-500"
                       }`}
                     />
                     <span className="ml-2 font-medium text-blue-700">VND</span>
                   </div>
-                </div>
+                </div> 
               </div>
 
               <div className="grid grid-cols-2 gap-4 bg-amber-50 p-4 rounded-lg">
                 <div>
-                  <Label className="text-sm font-medium text-amber-800">Lợi nhuận đầu tư (ROI)</Label>
+                  <Label className="text-sm font-medium text-amber-800">Tỉ suất đầu tư (IRR)</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={`${formatNumber(calculations.roi * 100)}%`}
+                      value={`${formatNumber(calculations.irr)}%`}
                       disabled
                       className="bg-white font-bold text-amber-700 border-amber-200"
                     />
@@ -939,7 +897,7 @@ export default function FinancialAnalysisPage() {
                   <Label className="text-sm font-medium text-amber-800">Thời gian thu hồi vốn</Label>
                   <div className="flex items-center mt-1">
                     <Input
-                      value={calculations.upfrontPayment > 0 ? calculations.paybackPeriod : "Không bỏ vốn"}
+                      value={calculations.monthSaving}
                       disabled
                       className="bg-white font-bold text-amber-700 border-amber-200"
                     />
@@ -954,7 +912,7 @@ export default function FinancialAnalysisPage() {
                 </Label>
                 <div className="flex items-center mt-1">
                   <Input
-                    value={formatNegativeNumber(+calculations.savingsDuringLoanTerm.toString())}
+                    value={formatNegativeNumber(+calculations.savingsDuringLoanTerm*installmentTerm*12).toString()}
                     disabled
                     className={`bg-white font-bold border-red-200 ${
                       calculations.savingsDuringLoanTerm >= 0 ? "text-green-600" : "text-red-600"
