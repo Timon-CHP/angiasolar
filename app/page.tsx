@@ -10,11 +10,11 @@ export default function Home() {
     <main className="min-h-screen">
       {/* Navigation */}
       <header className="bg-white py-4 px-6 shadow-sm">
-        <div className="container mx-auto flex items-center justify-between">
+        <div className="container mx-auto flex flex-col items-center justify-between">
           <div className="flex items-center">
-            <Image src="/logo.svg" alt="AnGia Solar Logo" width={120} height={50} className="mr-4" />
+            <a href="https://angiasolar.com.vn/"><Image src="/ags-icon-128.png" alt="AnGia Solar Logo" width={96} height={96} className="mr-4" /></a>
           </div>
-          <nav className="hidden md:flex items-center space-x-6">
+          <nav className="md:hidden md:flex items-center space-x-6">
             <div className="relative group">
               <button className="flex items-center text-gray-700 hover:text-amber-600 font-medium">
                 Chủ nhà/Doanh nghiệp
@@ -127,10 +127,10 @@ export default function Home() {
       </section>
 
       {/* Customer Experiences Section */}
-      <CustomerExperiences />
+      {/* <CustomerExperiences /> */}
 
       {/* Footer */}
-      <Footer />
+      {/* <Footer /> */}
 
       <CookieConsent />
     </main>
